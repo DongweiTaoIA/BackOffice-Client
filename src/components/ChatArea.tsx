@@ -7,20 +7,27 @@ import {
   Mic,
   MessageSquare,
   ChevronRight,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react'
 import type { Message } from '../App'
+import type { EligibilityResult } from '../services/api'
 import './ChatArea.css'
 
 interface ChatAreaProps {
   messages: Message[]
   onSendMessage: (content: string) => void
+  onRetry: (lastUserMessage: string) => void
+  isProcessing: boolean
   sidebarOpen: boolean
   onToggleSidebar: () => void
   chatOpen: boolean
   onToggleChat: () => void
 }
 
-function ChatArea({ messages, onSendMessage, sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }: ChatAreaProps) {
+function ChatArea({ messages, onSendMessage, onRetry, isProcessing, sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }: ChatAreaProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -104,12 +111,12 @@ function ChatArea({ messages, onSendMessage, sidebarOpen, onToggleSidebar, chatO
               <Sparkles size={40} />
             </div>
             <h2>How can I help you today?</h2>
-            <p>Ask me anything.</p>
+            <p>Ask me about contract status, e.g., "What is the status of contract AUMU02522380?"</p>
           </div>
         ) : (
           <div className="messages-list">
-            {messages.map(msg => (
-              <div key={msg.id} className={`message ${msg.role}`}>
+            {messages.map((msg, idx) => (
+              <div key={msg.id} className={`message ${msg.role}${msg.isError ? ' error' : ''}`}>
                 <div className="message-avatar">
                   {msg.role === 'user' ? 'U' : '✦'}
                 </div>
@@ -118,9 +125,48 @@ function ChatArea({ messages, onSendMessage, sidebarOpen, onToggleSidebar, chatO
                     {msg.role === 'user' ? 'You' : 'Team PnC'}
                     <span className="message-time">{formatTime(msg.timestamp)}</span>
                   </div>
-                  <div className="message-bubble">
-                    {msg.content}
-                  </div>
+                  {msg.isLoading ? (
+                    <div className="message-bubble loading-bubble">
+                      <Loader2 size={16} className="spin" />
+                      <span>Thinking...</span>
+                    </div>
+                  ) : msg.isError ? (
+                    <div className="message-bubble error-bubble">
+                      <span>{msg.content}</span>
+                      <button
+                        className="retry-btn"
+                        onClick={() => {
+                          const lastUserMsg = messages.slice(0, idx).reverse().find(m => m.role === 'user')
+                          if (lastUserMsg) onRetry(lastUserMsg.content)
+                        }}
+                      >
+                        <RefreshCw size={14} /> Retry
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="message-bubble">
+                        {msg.content}
+                      </div>
+                      {msg.eligibilityResult && (
+                        <EligibilityCard result={msg.eligibilityResult} />
+                      )}
+                      {msg.suggestions && msg.suggestions.length > 0 && (
+                        <div className="suggestions-container">
+                          {msg.suggestions.map((s, i) => (
+                            <button
+                              key={i}
+                              className="suggestion-chip"
+                              onClick={() => onSendMessage(s.action)}
+                              disabled={isProcessing}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -143,8 +189,9 @@ function ChatArea({ messages, onSendMessage, sidebarOpen, onToggleSidebar, chatO
                 value={input}
                 onChange={handleTextareaChange}
                 onKeyDown={handleKeyDown}
-                placeholder="Message Team PnC..."
+                placeholder="Ask about contract status, e.g., 'What is the status of contract AUMU02522380?'"
                 rows={1}
+                disabled={isProcessing}
               />
               <button type="button" className="input-btn" title="Voice input">
                 <Mic size={18} />
@@ -152,7 +199,7 @@ function ChatArea({ messages, onSendMessage, sidebarOpen, onToggleSidebar, chatO
               <button
                 type="submit"
                 className="send-btn"
-                disabled={!input.trim()}
+                disabled={!input.trim() || isProcessing}
                 title="Send message"
               >
                 <Send size={16} />
@@ -164,6 +211,50 @@ function ChatArea({ messages, onSendMessage, sidebarOpen, onToggleSidebar, chatO
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function EligibilityCard({ result }: { result: EligibilityResult }) {
+  return (
+    <div className={`eligibility-card ${result.isEligible ? 'eligible' : 'ineligible'}`}>
+      <div className="eligibility-header">
+        {result.isEligible ? (
+          <CheckCircle size={18} className="status-icon eligible" />
+        ) : (
+          <XCircle size={18} className="status-icon ineligible" />
+        )}
+        <span className="status-text">
+          {result.isEligible ? 'Eligible' : 'Not Eligible'}
+        </span>
+      </div>
+      <div className="eligibility-details">
+        <div className="detail-row">
+          <span className="detail-label">Dealer:</span>
+          <span className="detail-value">{result.dealerCode} — {result.dealerName}</span>
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Product:</span>
+          <span className="detail-value">{result.product}</span>
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Environment:</span>
+          <span className="detail-value">{result.environment}</span>
+        </div>
+      </div>
+      {result.programs.length > 0 && (
+        <div className="eligibility-programs">
+          <div className="programs-title">Active Programs</div>
+          {result.programs.map((p, i) => (
+            <div key={i} className="program-row">
+              <span className="program-code">{p.code}</span>
+              <span className="program-name">{p.name}</span>
+              <span className={`program-status ${p.status.toLowerCase()}`}>{p.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="eligibility-summary">{result.summary}</div>
     </div>
   )
 }

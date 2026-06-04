@@ -523,3 +523,200 @@
   color: var(--text-muted);
   margin-top: 8px;
 }
+
+/* ============ Suggestion Chips ============ */
+.suggestions-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.suggestion-chip {
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.suggestion-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--user-bubble, rgba(99, 102, 241, 0.05));
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.12);
+}
+
+.suggestion-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============ Loading Bubble ============ */
+.loading-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ============ Error Bubble ============ */
+.message.error .message-bubble,
+.error-bubble {
+  border-color: var(--danger, #ef4444) !important;
+  background: rgba(239, 68, 68, 0.05) !important;
+}
+
+.error-bubble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.retry-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+/* ============ Eligibility Card (updated) ============ */
+.eligibility-card .eligibility-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.eligibility-card.eligible .eligibility-header {
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.eligibility-card.ineligible .eligibility-header {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.eligibility-header .status-icon.eligible {
+  color: var(--success, #22c55e);
+}
+
+.eligibility-header .status-icon.ineligible {
+  color: var(--danger, #ef4444);
+}
+
+.eligibility-header .status-text {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.eligibility-card.eligible .status-text {
+  color: var(--success, #22c55e);
+}
+
+.eligibility-card.ineligible .status-text {
+  color: var(--danger, #ef4444);
+}
+
+.eligibility-details {
+  padding: 12px 16px;
+}
+
+.detail-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.detail-row .detail-label {
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 80px;
+}
+
+.detail-row .detail-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.eligibility-programs {
+  border-top: 1px solid var(--border);
+  padding: 10px 16px;
+}
+
+.programs-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.program-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.program-row .program-code {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.program-row .program-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.program-row .program-status {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.program-row .program-status.active {
+  color: var(--success, #22c55e);
+}
+
+.program-row .program-status.discontinued {
+  color: var(--text-muted);
+}

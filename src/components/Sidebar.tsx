@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronDown,
   LogIn,
+  LogOut,
   Code,
   LayoutDashboard,
   Upload,
@@ -121,7 +122,7 @@ const navSections: NavSection[] = [
 ]
 
 function Sidebar({ activeNavItem, onNavItemSelect, isOpen, onToggle }: SidebarProps) {
-  const { isAuthenticated, isLoading, login } = useAuth()
+  const { isAuthenticated, isLoading, userProfile, login, logout } = useAuth()
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
 
   const toggleSection = (sectionId: string) => {
@@ -197,7 +198,7 @@ function Sidebar({ activeNavItem, onNavItemSelect, isOpen, onToggle }: SidebarPr
       </nav>
 
       <div className="sidebar-footer">
-        {!isAuthenticated && (
+        {!isAuthenticated ? (
           <button
             className="sidebar-login-link"
             onClick={login}
@@ -206,6 +207,19 @@ function Sidebar({ activeNavItem, onNavItemSelect, isOpen, onToggle }: SidebarPr
             <LogIn size={20} />
             <span>{isLoading ? 'Signing in...' : 'Sign in with Microsoft'}</span>
           </button>
+        ) : (
+          <div className="sidebar-user-profile">
+            <div className="user-avatar">
+              {userProfile?.initials || 'U'}
+            </div>
+            <div className="user-info">
+              <span className="user-name">{userProfile?.displayName || 'User'}</span>
+              <span className="user-email">{userProfile?.email || ''}</span>
+            </div>
+            <button className="user-logout-btn" onClick={logout} title="Sign out">
+              <LogOut size={18} />
+            </button>
+          </div>
         )}
       </div>
     </aside>
