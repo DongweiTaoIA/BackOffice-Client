@@ -1,7 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import ChatArea from './components/ChatArea'
+import BugReportDialog from './components/support/BugReportDialog'
+import FeatureRequestDialog from './components/support/FeatureRequestDialog'
+import HelpRequestDialog from './components/support/HelpRequestDialog'
 import { api } from './services/api'
 import type { EligibilityResult, SuggestedAction } from './services/api'
 import { useAuth } from './auth/useAuth'
@@ -19,12 +22,29 @@ export interface Message {
 }
 
 function App() {
-  const { isAuthenticated, isLoading, login, userProfile } = useAuth()
+  const { isAuthenticated, isLoading, login } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [chatOpen, setChatOpen] = useState(true)
   const [activeNavItem, setActiveNavItem] = useState('dashboard')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [showBugDialog, setShowBugDialog] = useState(false)
+  const [showFeatureDialog, setShowFeatureDialog] = useState(false)
+  const [showHelpDialog, setShowHelpDialog] = useState(false)
+
+  // Open dialogs when sidebar nav items are clicked
+  useEffect(() => {
+    if (activeNavItem === 'report-bug') {
+      setShowBugDialog(true)
+      setActiveNavItem('dashboard')
+    } else if (activeNavItem === 'request-feature') {
+      setShowFeatureDialog(true)
+      setActiveNavItem('dashboard')
+    } else if (activeNavItem === 'ask-for-help') {
+      setShowHelpDialog(true)
+      setActiveNavItem('dashboard')
+    }
+  }, [activeNavItem])
 
   const sendLocalAgentMessage = useCallback(async (content: string, loadingId: string) => {
     const response = await api.sendLocalAgentMessage(content)
@@ -39,6 +59,21 @@ function App() {
   }, [])
 
   const handleSendMessage = useCallback(async (content: string) => {
+    // Check for support & feedback chat keywords
+    const msgLower = content.trim().toLowerCase()
+    if (msgLower === 'report bug' || msgLower === 'bug report' || msgLower === 'report a bug') {
+      setShowBugDialog(true)
+      return
+    }
+    if (msgLower === 'request feature' || msgLower === 'feature request' || msgLower === 'request a feature') {
+      setShowFeatureDialog(true)
+      return
+    }
+    if (msgLower === 'ask for help' || msgLower === 'help' || msgLower === 'need help') {
+      setShowHelpDialog(true)
+      return
+    }
+
     const userMessage: Message = {
       id: `msg-${Date.now()}-user`,
       role: 'user',
@@ -100,7 +135,7 @@ function App() {
     return (
       <div className="app-login">
         <div className="login-card">
-          <h1>Team PnC</h1>
+          <h1>Backoffice Admin</h1>
           <p>Please sign in with your work account to continue.</p>
           <button className="login-button" onClick={login}>
             Sign in
@@ -131,6 +166,9 @@ function App() {
         chatOpen={chatOpen}
         onToggleChat={() => setChatOpen(prev => !prev)}
       />
+      {showBugDialog && <BugReportDialog onClose={() => setShowBugDialog(false)} />}
+      {showFeatureDialog && <FeatureRequestDialog onClose={() => setShowFeatureDialog(false)} />}
+      {showHelpDialog && <HelpRequestDialog onClose={() => setShowHelpDialog(false)} />}
     </div>
   )
 }

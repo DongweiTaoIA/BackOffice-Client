@@ -283,6 +283,19 @@
   max-width: 420px;
 }
 
+.eligibility-card.eligible {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.eligibility-card.ineligible {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.ineligible-note {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
 .eligibility-status {
   display: flex;
   align-items: center;

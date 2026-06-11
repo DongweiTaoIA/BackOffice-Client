@@ -16,6 +16,15 @@ import type { Message } from '../App'
 import type { EligibilityResult } from '../services/api'
 import './ChatArea.css'
 
+function formatMessageContent(content: string): string {
+  return content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br />');
+}
+
 interface ChatAreaProps {
   messages: Message[]
   onSendMessage: (content: string) => void
@@ -145,9 +154,7 @@ function ChatArea({ messages, onSendMessage, onRetry, isProcessing, sidebarOpen,
                     </div>
                   ) : (
                     <>
-                      <div className="message-bubble">
-                        {msg.content}
-                      </div>
+                      <div className="message-bubble" dangerouslySetInnerHTML={{ __html: formatMessageContent(msg.content) }} />
                       {msg.eligibilityResult && (
                         <EligibilityCard result={msg.eligibilityResult} />
                       )}
@@ -225,24 +232,24 @@ function EligibilityCard({ result }: { result: EligibilityResult }) {
           <XCircle size={18} className="status-icon ineligible" />
         )}
         <span className="status-text">
-          {result.isEligible ? 'Eligible' : 'Not Eligible'}
+          {result.isEligible ? 'Eligible to Sell' : 'Not Eligible'}
         </span>
       </div>
       <div className="eligibility-details">
         <div className="detail-row">
-          <span className="detail-label">Dealer:</span>
+          <span className="detail-label">Dealer</span>
           <span className="detail-value">{result.dealerCode} — {result.dealerName}</span>
         </div>
         <div className="detail-row">
-          <span className="detail-label">Product:</span>
+          <span className="detail-label">Product</span>
           <span className="detail-value">{result.product}</span>
         </div>
         <div className="detail-row">
-          <span className="detail-label">Environment:</span>
+          <span className="detail-label">Environment</span>
           <span className="detail-value">{result.environment}</span>
         </div>
       </div>
-      {result.programs.length > 0 && (
+      {result.isEligible && result.programs.length > 0 && (
         <div className="eligibility-programs">
           <div className="programs-title">Active Programs</div>
           {result.programs.map((p, i) => (
@@ -254,7 +261,11 @@ function EligibilityCard({ result }: { result: EligibilityResult }) {
           ))}
         </div>
       )}
-      <div className="eligibility-summary">{result.summary}</div>
+      {!result.isEligible && (
+        <div className="eligibility-summary ineligible-note">
+          Would you like to activate or set up this product for the dealer?
+        </div>
+      )}
     </div>
   )
 }
