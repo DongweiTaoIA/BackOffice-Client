@@ -82,6 +82,8 @@ export interface MessageDto {
   timestamp: string;
   eligibilityResult?: EligibilityResult;
   suggestions?: SuggestedAction[];
+  dealerSearchResults?: DealerSearchResult[];
+  dealerDetails?: DealerDetailsDto;
 }
 
 export interface EligibilityResult {
@@ -106,6 +108,54 @@ export interface SuggestedAction {
   payload?: string;
 }
 
+export interface DealerSearchResult {
+  dealerId: string;
+  dbaName: string;
+  dealerStat: string;
+  city: string | null;
+  provState: string | null;
+}
+
+export interface DealerPagedResult {
+  items: DealerSearchResult[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export interface DealerPagedParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  province?: string;
+  sortBy?: string;
+  sortDir?: string;
+}
+
+export interface DealerDetailsDto {
+  dealerId: string;
+  dbaName: string;
+  legalName: string | null;
+  dealerStat: string;
+  dealerGroup: string | null;
+  dealerCatg: string | null;
+  city: string | null;
+  provState: string | null;
+  postalZip: string | null;
+  phoneNum: string | null;
+  faxNum: string | null;
+  webPageUrl: string | null;
+  territoryId: string;
+  language: string | null;
+  oem: string | null;
+  isDealershipYN: string;
+  isBrokerYN: string;
+  producerMake: string | null;
+  producerClass: string | null;
+}
+
 interface OllamaMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -118,7 +168,7 @@ interface OllamaChatResponse {
 }
 
 interface AgentToolCall {
-  tool: 'getContractStatus' | 'checkEligibility' | 'checkCancellation' | 'getMaxMarkup' | 'activateProgram' | 'deactivateProgram' | 'generalChat' | 'none';
+  tool: 'getContractStatus' | 'checkEligibility' | 'checkCancellation' | 'getMaxMarkup' | 'activateProgram' | 'deactivateProgram' | 'searchDealer' | 'generalChat' | 'none';
   arguments?: {
     contractId?: string;
     dealerId?: string;
@@ -128,6 +178,7 @@ interface AgentToolCall {
     programId?: string;
     programName?: string;
     effectiveDate?: string;
+    searchQuery?: string;
     expiryDate?: string;
   };
   answer?: string;
@@ -215,6 +266,7 @@ function normalizeToolCall(value: unknown): AgentToolCall {
     : toolName === 'getMaxMarkup' || toolName === 'maxMarkup' || toolName === 'get_max_markup' ? 'getMaxMarkup'
     : toolName === 'activateProgram' || toolName === 'activate' ? 'activateProgram'
     : toolName === 'deactivateProgram' || toolName === 'deactivate' ? 'deactivateProgram'
+    : toolName === 'searchDealer' || toolName === 'search_dealer' || toolName === 'findDealer' || toolName === 'listDealers' ? 'searchDealer'
     : toolName === 'generalChat' ? 'generalChat'
     : 'none';
   const args = candidate.arguments && typeof candidate.arguments === 'object'
@@ -273,10 +325,16 @@ function normalizeToolCall(value: unknown): AgentToolCall {
     : typeof args.date === 'string' ? args.date
     : typeof candidate.expiryDate === 'string' ? candidate.expiryDate
     : undefined;
+  const searchQuery = typeof args.searchQuery === 'string' ? args.searchQuery
+    : typeof args.search_query === 'string' ? args.search_query
+    : typeof args.query === 'string' ? args.query
+    : typeof candidate.searchQuery === 'string' ? candidate.searchQuery
+    : typeof candidate.query === 'string' ? candidate.query
+    : undefined;
 
   return {
     tool,
-    arguments: { contractId, dealerId, dealerName, productId, productName, programId, programName, effectiveDate, expiryDate },
+    arguments: { contractId, dealerId, dealerName, productId, productName, programId, programName, effectiveDate, expiryDate, searchQuery },
     answer: typeof candidate.answer === 'string' ? candidate.answer : undefined,
   };
 }
@@ -341,10 +399,13 @@ TOOLS:
 6. getMaxMarkup - When user asks about the maximum markup for a program.
    Return: {"tool":"getMaxMarkup","arguments":{"programId":"PROGRAM_CODE"}} or {"tool":"getMaxMarkup","arguments":{"programName":"PROGRAM_NAME"}}
 
-7. generalChat - For general questions unrelated to eligibility or contracts.
+7. searchDealer - When user asks to find, list, search, look up, or show dealer(s). Extract whatever search text they provide (name, code, city, province).
+   Return: {"tool":"searchDealer","arguments":{"searchQuery":"THE_SEARCH_TEXT"}}
+
+8. generalChat - For general questions unrelated to eligibility or contracts.
    Return: {"tool":"generalChat"}
 
-8. none - When you cannot determine intent or need more info.
+9. none - When you cannot determine intent or need more info.
    Return: {"tool":"none","answer":"your clarifying question"}
 
 EXAMPLES:
@@ -402,6 +463,51 @@ User: "max markup for Retail Wearable Parts"
 User: "what is the max markup on DW100"
 → {"tool":"getMaxMarkup","arguments":{"programId":"DW100"}}
 
+User: "find dealer AB006624"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"AB006624"}}
+
+User: "list dealers in Alberta"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"Alberta"}}
+
+User: "search for Pacific Auto"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"Pacific Auto"}}
+
+User: "show me dealers in BC"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"BC"}}
+
+User: "look up dealer Ontario Jeep"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"Ontario Jeep"}}
+
+User: "list ab dealers"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"AB"}}
+
+User: "dealer list by AB"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"AB"}}
+
+User: "list active dealers in Alberta"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"Alberta"}}
+
+User: "show all ON dealers"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"ON"}}
+
+User: "dealers in Toronto"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"Toronto"}}
+
+User: "who are the dealers in Quebec"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"Quebec"}}
+
+User: "get me a list of BC dealers"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"BC"}}
+
+User: "dealer search Calgary"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"Calgary"}}
+
+User: "find all dealers"
+→ {"tool":"searchDealer","arguments":{"searchQuery":""}}
+
+User: "show dealer AB006621"
+→ {"tool":"searchDealer","arguments":{"searchQuery":"AB006621"}}
+
 RULES:
 - CRITICAL: "eligible for cancellation", "can be cancelled", "cancel contract" → ALWAYS use checkCancellation, NEVER checkEligibility. The word "cancellation" or "cancel" in the context of a CONTRACT means checkCancellation.
 - checkEligibility is ONLY for dealers selling products/programs. It always involves a DEALER.
@@ -411,12 +517,62 @@ RULES:
 - A code with letters+digits like AU220, DW100 is a programId, NOT a productId.
 - If the text after "sell" is a multi-word phrase that is NOT a known product name, treat the entire phrase as programName.
 - Do NOT guess or infer productId from words. "Retail" does NOT mean "RW". Only use productId if the user literally typed EW, DW, GAP, RW, PPM, or TR.
+- CRITICAL for searchDealer: Any message about finding, listing, searching, showing, looking up, or getting dealers → ALWAYS use searchDealer. This includes "list X dealers", "dealer list", "dealers in X", "X dealers", "show dealer X", "get dealers", "who are the dealers". Extract the meaningful search text (city, province code, name, dealer code prefix) as searchQuery. Strip filler words like "list", "find", "show", "active", "all", "dealers", "dealer", "me", "the", "in", "by", "get".
+- If the message mentions "dealer" combined with "list", "find", "search", "show", "look up", "get", or asks "who" about dealers → ALWAYS searchDealer, NEVER generalChat.
 - Return ONLY the JSON object, nothing else.`,
     },
     { role: 'user', content },
   ]);
 
   return normalizeToolCall(extractJsonObject(modelResponse));
+}
+
+async function searchDealers(query: string): Promise<DealerSearchResult[]> {
+  const response = await authorizedFetch(
+    `${API_BASE_URL}/api/dealers/search?q=${encodeURIComponent(query)}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Dealer Search Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json() as DealerSearchResult[];
+}
+
+async function getDealersPaged(params: DealerPagedParams = {}): Promise<DealerPagedResult> {
+  const searchParams = new URLSearchParams();
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  if (params.search) searchParams.set('search', params.search);
+  if (params.status) searchParams.set('status', params.status);
+  if (params.province) searchParams.set('province', params.province);
+  if (params.sortBy) searchParams.set('sortBy', params.sortBy);
+  if (params.sortDir) searchParams.set('sortDir', params.sortDir);
+
+  const response = await authorizedFetch(
+    `${API_BASE_URL}/api/dealers?${searchParams.toString()}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Dealer List Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json() as DealerPagedResult;
+}
+
+async function getDealerDetails(dealerCode: string): Promise<DealerDetailsDto> {
+  const response = await authorizedFetch(
+    `${API_BASE_URL}/api/dealers/${encodeURIComponent(dealerCode)}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Dealer Details Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json() as DealerDetailsDto;
 }
 
 async function getContractStatus(contractId: string): Promise<ContractStatus> {
@@ -738,6 +894,11 @@ export const api = {
       body: JSON.stringify({ content }),
     }),
 
+  // Dealer search & details
+  searchDealers: (query: string) => searchDealers(query),
+  getDealersPaged: (params?: DealerPagedParams) => getDealersPaged(params),
+  getDealerDetails: (dealerCode: string) => getDealerDetails(dealerCode),
+
   sendLocalAgentMessage: async (content: string): Promise<MessageDto> => {
     // Handle pending deactivation expiry response
     if (pendingDeactivation) {
@@ -859,6 +1020,25 @@ export const api = {
       }
     }
 
+    // Second-pass AI check: if LLM missed a dealer search intent, ask again with a focused prompt
+    if ((toolCall.tool === 'none' || toolCall.tool === 'generalChat') && /dealer/i.test(effectiveContent)) {
+      try {
+        const secondPass = await chatWithOllama([
+          {
+            role: 'system',
+            content: `The user message is about dealers. Extract the search term they want to look up. Return ONLY a JSON object like: {"tool":"searchDealer","arguments":{"searchQuery":"THE_TERM"}}. The search term could be a dealer code (e.g. AB006624), a province code (AB, BC, ON, QC), a city name, or a dealer name. Strip filler words like "list", "find", "show", "dealers", "active", "in", "by", "all", "the". If the entire message is just about listing/finding dealers with no specific filter, use an empty string. Return ONLY the JSON.`,
+          },
+          { role: 'user', content: effectiveContent },
+        ]);
+        const secondResult = normalizeToolCall(extractJsonObject(secondPass));
+        if (secondResult.tool === 'searchDealer') {
+          toolCall = secondResult;
+        }
+      } catch {
+        // If second pass fails, keep original toolCall
+      }
+    }
+
     if (toolCall.tool === 'getContractStatus') {
       const contractId = toolCall.arguments?.contractId?.trim();
 
@@ -931,6 +1111,44 @@ export const api = {
       };
     }
 
+    if (toolCall.tool === 'searchDealer') {
+      const query = toolCall.arguments?.searchQuery?.trim() || toolCall.arguments?.dealerId?.trim() || toolCall.arguments?.dealerName?.trim() || '';
+
+      const results = await searchDealers(query);
+
+      if (results.length === 0) {
+        return {
+          id: createId('local-assistant'),
+          conversationId: 'local-ollama-demo',
+          role: 'assistant',
+          content: `No dealers found matching "${query}".`,
+          timestamp: new Date().toISOString(),
+        };
+      }
+
+      // If exactly one result, return details directly
+      if (results.length === 1) {
+        const details = await getDealerDetails(results[0].dealerId);
+        return {
+          id: createId('local-assistant'),
+          conversationId: 'local-ollama-demo',
+          role: 'assistant',
+          content: `Found dealer **${details.dbaName}** (${details.dealerId}).`,
+          timestamp: new Date().toISOString(),
+          dealerDetails: details,
+        };
+      }
+
+      return {
+        id: createId('local-assistant'),
+        conversationId: 'local-ollama-demo',
+        role: 'assistant',
+        content: `Found ${results.length} dealer(s) matching "${query}".`,
+        timestamp: new Date().toISOString(),
+        dealerSearchResults: results,
+      };
+    }
+
     if (toolCall.tool === 'checkEligibility') {
       const args = toolCall.arguments;
       if (!args?.dealerId && !args?.dealerName) {
@@ -950,11 +1168,14 @@ export const api = {
         lastEligibilityContext = { dealerCode: eligibility.dealerCode, product: eligibility.product };
       }
 
+      // Use the API summary to determine if actions are appropriate
+      const dealerNotFound = eligibility.summary.toLowerCase().includes('not found');
+
       const suggestions: SuggestedAction[] = eligibility.isEligible
         ? [
             { label: 'Deactivate', action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
           ]
-        : eligibility.dealerCode
+        : (eligibility.dealerCode && !dealerNotFound)
           ? [
               { label: 'Activate Product', action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
               { label: 'View Dealer Details', action: 'viewDealer', payload: eligibility.dealerCode },

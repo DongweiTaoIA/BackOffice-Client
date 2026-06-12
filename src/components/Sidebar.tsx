@@ -57,6 +57,7 @@ const navSections: NavSection[] = [
     label: 'Operations',
     icon: <Code size={14} />,
     items: [
+      { id: 'dealers', label: 'Dealers', icon: <Users size={16} /> },
       { id: 'contracts', label: 'Contracts', icon: <FileText size={16} /> },
       { id: 'claims', label: 'Claims', icon: <ClipboardCheck size={16} /> },
     ],
@@ -138,22 +139,25 @@ function Sidebar({ activeNavItem, onNavItemSelect, isOpen, onToggle }: SidebarPr
   }
 
   return (
-    <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
+    <aside className={`sidebar ${isOpen ? 'open' : 'collapsed'}`}>
       <div className="sidebar-header">
-        <div className="logo">
-          <span className="logo-text">Backoffice Admin</span>
-        </div>
-        <button className="collapse-btn" onClick={onToggle} title="Collapse sidebar">
-          <ChevronLeft size={20} />
+        {isOpen && (
+          <div className="logo">
+            <span className="logo-text">Backoffice Admin</span>
+          </div>
+        )}
+        <button className="collapse-btn" onClick={onToggle} title={isOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
+          {isOpen ? <ChevronLeft size={20} /> : <ChevronDown size={20} style={{ transform: 'rotate(-90deg)' }} />}
         </button>
       </div>
 
       <button
         className={`new-chat-btn ${activeNavItem === 'dashboard' ? 'active' : ''}`}
         onClick={() => onNavItemSelect('dashboard')}
+        title="Dashboard"
       >
         <LayoutDashboard size={20} />
-        <span>Dashboard</span>
+        {isOpen && <span>Dashboard</span>}
       </button>
 
       <nav className="nav-list">
@@ -161,33 +165,36 @@ function Sidebar({ activeNavItem, onNavItemSelect, isOpen, onToggle }: SidebarPr
           const isCollapsed = collapsedSections.has(section.id)
           return (
             <div key={section.id} className="nav-section">
-              <div className="nav-section-header" onClick={() => toggleSection(section.id)}>
-                <span className="nav-section-label">
-                  <span className="section-icon">{section.icon}</span>
-                  {section.label}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {section.badge && (
-                    <span className="nav-section-badge">{section.badge}</span>
-                  )}
-                  {section.items.length > 0 && (
-                    <ChevronDown
-                      size={14}
-                      className={`nav-section-chevron ${isCollapsed ? 'collapsed' : ''}`}
-                    />
-                  )}
+              {isOpen && (
+                <div className="nav-section-header" onClick={() => toggleSection(section.id)}>
+                  <span className="nav-section-label">
+                    <span className="section-icon">{section.icon}</span>
+                    {section.label}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {section.badge && (
+                      <span className="nav-section-badge">{section.badge}</span>
+                    )}
+                    {section.items.length > 0 && (
+                      <ChevronDown
+                        size={14}
+                        className={`nav-section-chevron ${isCollapsed ? 'collapsed' : ''}`}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-              {section.items.length > 0 && (
+              )}
+              {section.items.length > 0 && (isOpen ? !isCollapsed : true) && (
                 <div className={`nav-section-items ${isCollapsed ? 'collapsed' : ''}`}>
                   {section.items.map(item => (
                     <button
                       key={item.id}
                       className={`nav-item ${activeNavItem === item.id ? 'active' : ''}`}
                       onClick={() => onNavItemSelect(item.id)}
+                      title={item.label}
                     >
                       {item.icon}
-                      {item.label}
+                      {isOpen && item.label}
                     </button>
                   ))}
                 </div>
@@ -203,19 +210,22 @@ function Sidebar({ activeNavItem, onNavItemSelect, isOpen, onToggle }: SidebarPr
             className="sidebar-login-link"
             onClick={login}
             disabled={isLoading}
+            title="Sign in"
           >
             <LogIn size={20} />
-            <span>{isLoading ? 'Signing in...' : 'Sign in with Microsoft'}</span>
+            {isOpen && <span>{isLoading ? 'Signing in...' : 'Sign in with Microsoft'}</span>}
           </button>
         ) : (
           <div className="sidebar-user-profile">
             <div className="user-avatar">
               {userProfile?.initials || 'U'}
             </div>
-            <div className="user-info">
-              <span className="user-name">{userProfile?.displayName || 'User'}</span>
-              <span className="user-email">{userProfile?.email || ''}</span>
-            </div>
+            {isOpen && (
+              <div className="user-info">
+                <span className="user-name">{userProfile?.displayName || 'User'}</span>
+                <span className="user-email">{userProfile?.email || ''}</span>
+              </div>
+            )}
             <button className="user-logout-btn" onClick={logout} title="Sign out">
               <LogOut size={18} />
             </button>

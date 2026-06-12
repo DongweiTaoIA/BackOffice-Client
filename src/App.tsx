@@ -2,11 +2,14 @@ import { useState, useCallback, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import ChatArea from './components/ChatArea'
+import DealerSearch from './components/DealerSearch'
+import DealerDetails from './components/DealerDetails'
+import Dealers from './components/Dealers'
 import BugReportDialog from './components/support/BugReportDialog'
 import FeatureRequestDialog from './components/support/FeatureRequestDialog'
 import HelpRequestDialog from './components/support/HelpRequestDialog'
 import { api } from './services/api'
-import type { EligibilityResult, SuggestedAction } from './services/api'
+import type { EligibilityResult, SuggestedAction, DealerSearchResult, DealerDetailsDto } from './services/api'
 import { useAuth } from './auth/useAuth'
 import './App.css'
 
@@ -31,6 +34,10 @@ function App() {
   const [showBugDialog, setShowBugDialog] = useState(false)
   const [showFeatureDialog, setShowFeatureDialog] = useState(false)
   const [showHelpDialog, setShowHelpDialog] = useState(false)
+  const [mainView, setMainView] = useState<'dashboard' | 'dealers' | 'dealerSearch' | 'dealerDetails'>('dashboard')
+  const [dealerSearchResults, setDealerSearchResults] = useState<DealerSearchResult[]>([])
+  const [dealerSearchQuery, setDealerSearchQuery] = useState('')
+  const [selectedDealer, setSelectedDealer] = useState<DealerDetailsDto | null>(null)
 
   // Open dialogs when sidebar nav items are clicked
   useEffect(() => {
@@ -43,11 +50,27 @@ function App() {
     } else if (activeNavItem === 'ask-for-help') {
       setShowHelpDialog(true)
       setActiveNavItem('dashboard')
+    } else if (activeNavItem === 'dealers') {
+      setMainView('dealers')
+    } else if (activeNavItem === 'dashboard') {
+      setMainView('dashboard')
     }
   }, [activeNavItem])
 
   const sendLocalAgentMessage = useCallback(async (content: string, loadingId: string) => {
     const response = await api.sendLocalAgentMessage(content)
+
+    // If the response contains dealer search results, update main view
+    if (response.dealerSearchResults && response.dealerSearchResults.length > 0) {
+      setDealerSearchResults(response.dealerSearchResults)
+      setDealerSearchQuery(content)
+      setMainView('dealers')
+      setActiveNavItem('dealers')
+    } else if (response.dealerDetails) {
+      setSelectedDealer(response.dealerDetails)
+      setMainView('dealers')
+      setActiveNavItem('dealers')
+    }
 
     setMessages(prev => prev.map(m => m.id === loadingId ? {
       id: response.id,
@@ -154,15 +177,45 @@ function App() {
         onToggle={() => setSidebarOpen(prev => !prev)}
       />
       <main className="main-content">
-        <Dashboard />
+        {mainView === 'dashboard' && <Dashboard />}
+        {mainView === 'dealers' && (
+          <Dealers
+            onSendMessage={handleSendMessage}
+            externalResults={dealerSearchResults}
+            externalQuery={dealerSearchQuery}
+            externalDealer={selectedDealer}
+          />
+        )}
+        {mainView === 'dealerSearch' && (
+          <DealerSearch
+            results={dealerSearchResults}
+            searchQuery={dealerSearchQuery}
+            onSelectDealer={async (dealerCode) => {
+              const details = await api.getDealerDetails(dealerCode)
+              setSelectedDealer(details)
+              setMainView('dealerDetails')
+            }}
+            onBack={() => setMainView('dashboard')}
+          />
+        )}
+        {mainView === 'dealerDetails' && selectedDealer && (
+          <DealerDetails
+            dealer={selectedDealer}
+            onBack={() => {
+              if (dealerSearchResults.length > 0) {
+                setMainView('dealerSearch')
+              } else {
+                setMainView('dashboard')
+              }
+            }}
+          />
+        )}
       </main>
       <ChatArea
         messages={messages}
         onSendMessage={handleSendMessage}
         onRetry={handleRetry}
         isProcessing={isProcessing}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen(true)}
         chatOpen={chatOpen}
         onToggleChat={() => setChatOpen(prev => !prev)}
       />

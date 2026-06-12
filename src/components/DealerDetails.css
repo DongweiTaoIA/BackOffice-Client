@@ -1,0 +1,119 @@
+.dealer-details {
+  flex: 1;
+  padding: 32px;
+  overflow-y: auto;
+  background-color: var(--bg-secondary, #f9fafb);
+}
+
+.dealer-details-header {
+  margin-bottom: 24px;
+}
+
+.dealer-details-header .back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dealer-details-header .back-btn:hover {
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary);
+}
+
+.dealer-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dealer-title h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.dealer-title svg {
+  color: var(--text-secondary);
+}
+
+.dealer-code-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.details-section {
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.details-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.details-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.detail-label {
+  min-width: 130px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detail-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.detail-value a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.detail-value a:hover {
+  text-decoration: underline;
+}

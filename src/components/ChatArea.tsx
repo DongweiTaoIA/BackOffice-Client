@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   Send,
-  Menu,
   Sparkles,
   Paperclip,
   Mic,
@@ -30,13 +29,11 @@ interface ChatAreaProps {
   onSendMessage: (content: string) => void
   onRetry: (lastUserMessage: string) => void
   isProcessing: boolean
-  sidebarOpen: boolean
-  onToggleSidebar: () => void
   chatOpen: boolean
   onToggleChat: () => void
 }
 
-function ChatArea({ messages, onSendMessage, onRetry, isProcessing, sidebarOpen, onToggleSidebar, chatOpen, onToggleChat }: ChatAreaProps) {
+function ChatArea({ messages, onSendMessage, onRetry, isProcessing, chatOpen, onToggleChat }: ChatAreaProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -95,11 +92,6 @@ function ChatArea({ messages, onSendMessage, onRetry, isProcessing, sidebarOpen,
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-left">
-          {!sidebarOpen && (
-            <button className="menu-btn" onClick={onToggleSidebar}>
-              <Menu size={20} />
-            </button>
-          )}
           <div className="chat-title">
             <Sparkles size={20} className="sparkle-icon" />
             Team PnC at your service
