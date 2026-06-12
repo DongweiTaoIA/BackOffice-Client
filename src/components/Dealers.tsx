@@ -4,6 +4,7 @@ import {
   List, LayoutGrid, Map, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown,
   X, Loader2,
 } from 'lucide-react'
+import DealersMap from './DealersMap'
 import { api } from '../services/api'
 import type { DealerSearchResult, DealerDetailsDto } from '../services/api'
 import './Dealers.css'
@@ -13,23 +14,6 @@ type SortField = 'dealerId' | 'dbaName' | 'dealerStat' | 'city' | 'provState'
 type SortDir = 'asc' | 'desc'
 
 const PAGE_SIZE = 50
-
-// Province coordinates for map placement (Canadian provinces)
-const PROVINCE_COORDS: Record<string, { lat: number; lng: number }> = {
-  AB: { lat: 53.9, lng: -116.6 },
-  BC: { lat: 53.7, lng: -127.6 },
-  MB: { lat: 53.8, lng: -98.8 },
-  NB: { lat: 46.5, lng: -66.2 },
-  NL: { lat: 53.1, lng: -57.7 },
-  NS: { lat: 44.7, lng: -63.7 },
-  NT: { lat: 64.3, lng: -119.4 },
-  NU: { lat: 70.3, lng: -86.6 },
-  ON: { lat: 51.3, lng: -85.3 },
-  PE: { lat: 46.5, lng: -63.4 },
-  QC: { lat: 52.9, lng: -73.5 },
-  SK: { lat: 52.9, lng: -106.5 },
-  YT: { lat: 64.3, lng: -135.1 },
-}
 
 interface DealersProps {
   onSendMessage: (content: string) => void
@@ -52,7 +36,8 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
   const [viewMode, setViewMode] = useState<ViewMode>('list')
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<string>('')
+  const [activeOnly, setActiveOnly] = useState(true)
+  const [includeDemo, setIncludeDemo] = useState(false)
   const [provinceFilter, setProvinceFilter] = useState<string>('')
 
   // Sort
@@ -66,9 +51,6 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
   // Infinite scroll sentinel
   const sentinelRef = useRef<HTMLDivElement>(null)
 
-  // Map province summary
-  const [provinceSummary, setProvinceSummary] = useState<{ province: string; count: number }[]>([])
-
   // Fetch dealers from paginated API
   const fetchDealers = useCallback(async (pageNum: number, append: boolean) => {
     if (pageNum === 1) setIsLoading(true)
@@ -78,10 +60,11 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
       const result = await api.getDealersPaged({
         page: pageNum,
         pageSize: PAGE_SIZE,
-        status: statusFilter || undefined,
+        status: activeOnly ? 'A' : undefined,
         province: provinceFilter || undefined,
         sortBy: sortField,
         sortDir: sortDir,
+        excludeDemo: !includeDemo,
       })
 
       if (append) {
@@ -98,7 +81,7 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
       setIsLoading(false)
       setIsLoadingMore(false)
     }
-  }, [statusFilter, provinceFilter, sortField, sortDir])
+  }, [activeOnly, includeDemo, provinceFilter, sortField, sortDir])
 
   // Initial load and reload on filter/sort changes
   useEffect(() => {
@@ -106,32 +89,6 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
       fetchDealers(1, false)
     }
   }, [fetchDealers, externalMode])
-
-  // Load province summary for map view
-  useEffect(() => {
-    if (viewMode === 'map') {
-      const loadSummary = async () => {
-        try {
-          // Get counts per province by fetching a large page with no province filter
-          const provinces = ['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT']
-          const summaryPromises = provinces.map(async (prov) => {
-            const result = await api.getDealersPaged({
-              page: 1,
-              pageSize: 1,
-              status: statusFilter || undefined,
-              province: prov,
-            })
-            return { province: prov, count: result.totalCount }
-          })
-          const results = await Promise.all(summaryPromises)
-          setProvinceSummary(results.filter(r => r.count > 0))
-        } catch (err) {
-          console.error('Failed to load province summary:', err)
-        }
-      }
-      loadSummary()
-    }
-  }, [viewMode, statusFilter])
 
   // Sync external results from chat
   useEffect(() => {
@@ -143,20 +100,25 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
       setSelectedDealer(null)
       setExternalMode(true)
       setFilterLabel(externalQuery || '')
-      setStatusFilter('')
+      setActiveOnly(true)
+      setIncludeDemo(false)
       setProvinceFilter('')
     }
   }, [externalResults, externalQuery])
 
-  // Sync external dealer details from chat
+  // Sync external dealer details from chat (also clears when nav resets it)
   useEffect(() => {
-    if (externalDealer) {
-      setSelectedDealer(externalDealer)
-    }
+    setSelectedDealer(externalDealer || null)
   }, [externalDealer])
 
   // When filters/sort change, exit external mode
   const handleFilterChange = (setter: (v: string) => void, value: string) => {
+    setter(value)
+    setExternalMode(false)
+    setFilterLabel('')
+  }
+
+  const handleCheckboxChange = (setter: (v: boolean) => void, value: boolean) => {
     setter(value)
     setExternalMode(false)
     setFilterLabel('')
@@ -209,7 +171,8 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
   }
 
   const clearFilters = () => {
-    setStatusFilter('')
+    setActiveOnly(true)
+    setIncludeDemo(false)
     setProvinceFilter('')
     setExternalMode(false)
     setFilterLabel('')
@@ -420,41 +383,47 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="dealers-toolbar">
-        <div className="filters">
-          <div className="filter-group">
-            <select
-              value={statusFilter}
-              onChange={e => handleFilterChange(setStatusFilter, e.target.value)}
-            >
-              <option value="">All Statuses</option>
-              <option value="A">Active</option>
-              <option value="I">Inactive</option>
-              <option value="S">Suspended</option>
-            </select>
-            <ChevronDown size={14} className="select-chevron" />
+      {/* Filters (hidden in map view) */}
+      {viewMode !== 'map' && (
+        <div className="dealers-toolbar">
+          <div className="filters">
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={activeOnly}
+                onChange={e => handleCheckboxChange(setActiveOnly, e.target.checked)}
+              />
+              Active Only
+            </label>
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={includeDemo}
+                onChange={e => handleCheckboxChange(setIncludeDemo, e.target.checked)}
+              />
+              Include Demo Dealers
+            </label>
+            <div className="filter-group">
+              <select
+                value={provinceFilter}
+                onChange={e => handleFilterChange(setProvinceFilter, e.target.value)}
+              >
+                <option value="">All Provinces</option>
+                {['AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT'].map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="select-chevron" />
+            </div>
+            {(!activeOnly || includeDemo || provinceFilter || externalMode) && (
+              <button className="clear-filters-btn" onClick={clearFilters}>
+                <X size={14} />
+                Clear
+              </button>
+            )}
           </div>
-          <div className="filter-group">
-            <select
-              value={provinceFilter}
-              onChange={e => handleFilterChange(setProvinceFilter, e.target.value)}
-            >
-              <option value="">All Provinces</option>
-              {['AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT'].map(p => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="select-chevron" />
-          </div>
-          {(statusFilter || provinceFilter || externalMode) && (
-            <button className="clear-filters-btn" onClick={clearFilters}>
-              <X size={14} />
-              Clear
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
       {isLoading && (
         <div className="dealers-loading">
@@ -546,84 +515,22 @@ function Dealers({ onSendMessage, externalResults, externalQuery, externalDealer
       {/* Map View */}
       {!isLoading && viewMode === 'map' && (
         <div className="dealers-map-view">
-          <div className="map-container">
-            <svg viewBox="0 0 1000 700" className="canada-map-svg">
-              {/* Simplified Canada background */}
-              <rect x="0" y="0" width="1000" height="700" fill="var(--bg-primary, #fff)" rx="12" />
-              {/* Grid lines */}
-              {[100,200,300,400,500,600].map(y => (
-                <line key={`h${y}`} x1="0" y1={y} x2="1000" y2={y} stroke="var(--border)" strokeWidth="0.5" opacity="0.3" />
-              ))}
-              {[100,200,300,400,500,600,700,800,900].map(x => (
-                <line key={`v${x}`} x1={x} y1="0" x2={x} y2="700" stroke="var(--border)" strokeWidth="0.5" opacity="0.3" />
-              ))}
-              {/* Province bubbles */}
-              {provinceSummary.map(({ province, count }) => {
-                const coords = PROVINCE_COORDS[province]
-                if (!coords) return null
-                // Map lat/lng to SVG coordinates
-                const x = ((coords.lng + 141) / 85) * 900 + 50
-                const y = ((75 - coords.lat) / 35) * 600 + 50
-                const radius = Math.min(Math.max(Math.sqrt(count) * 8, 20), 60)
-                const isSelected = provinceFilter === province
-                return (
-                  <g key={province} className="map-bubble" onClick={() => handleFilterChange(setProvinceFilter, isSelected ? '' : province)}>
-                    <circle
-                      cx={x} cy={y} r={radius}
-                      fill={isSelected ? '#3b82f6' : '#93c5fd'}
-                      opacity={isSelected ? 0.9 : 0.7}
-                      stroke={isSelected ? '#1d4ed8' : '#3b82f6'}
-                      strokeWidth="2"
-                    />
-                    <text x={x} y={y - 6} textAnchor="middle" fontSize="14" fontWeight="700" fill={isSelected ? '#fff' : '#1e3a5f'}>
-                      {province}
-                    </text>
-                    <text x={x} y={y + 12} textAnchor="middle" fontSize="11" fill={isSelected ? '#dbeafe' : '#475569'}>
-                      {count}
-                    </text>
-                  </g>
-                )
-              })}
-            </svg>
-          </div>
-
-          {/* Dealer list below map */}
-          {dealers.length > 0 && (
-            <div className="map-dealer-list">
-              <h3 className="map-list-title">
-                {provinceFilter ? `Dealers in ${provinceFilter}` : 'All Dealers'}
-                <span className="map-list-count">({dealers.length} shown of {totalCount})</span>
-              </h3>
-              {dealers.map(dealer => (
-                <div
-                  key={dealer.dealerId}
-                  className="map-dealer-item"
-                  onClick={() => handleSelectDealer(dealer.dealerId)}
-                >
-                  <div className="map-dealer-info">
-                    <span className="dealer-code">{dealer.dealerId}</span>
-                    <span className="dealer-name">{dealer.dbaName}</span>
-                  </div>
-                  <div className="map-dealer-location">
-                    <MapPin size={12} />
-                    {[dealer.city, dealer.provState].filter(Boolean).join(', ')}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <DealersMap
+            onSelectDealer={handleSelectDealer}
+            externalDealers={externalMode ? dealers : undefined}
+          />
         </div>
       )}
 
       {/* Infinite scroll sentinel */}
-      {hasMore && !externalMode && (
+      {hasMore && !externalMode && viewMode !== 'map' && (
         <div ref={sentinelRef} className="load-more-sentinel">
           <Loader2 size={16} className="spinning" />
           <span>Loading more...</span>
         </div>
       )}
 
-      {!hasMore && dealers.length > PAGE_SIZE && (
+      {!hasMore && dealers.length > PAGE_SIZE && viewMode !== 'map' && (
         <div className="end-of-list">All {totalCount} dealers shown</div>
       )}
 

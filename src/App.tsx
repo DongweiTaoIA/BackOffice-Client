@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import ChatArea from './components/ChatArea'
@@ -39,23 +39,32 @@ function App() {
   const [dealerSearchQuery, setDealerSearchQuery] = useState('')
   const [selectedDealer, setSelectedDealer] = useState<DealerDetailsDto | null>(null)
 
-  // Open dialogs when sidebar nav items are clicked
-  useEffect(() => {
-    if (activeNavItem === 'report-bug') {
+  // Handle sidebar nav item clicks
+  const handleNavItemSelect = useCallback((id: string) => {
+    if (id === 'report-bug') {
       setShowBugDialog(true)
-      setActiveNavItem('dashboard')
-    } else if (activeNavItem === 'request-feature') {
+      return
+    }
+    if (id === 'request-feature') {
       setShowFeatureDialog(true)
-      setActiveNavItem('dashboard')
-    } else if (activeNavItem === 'ask-for-help') {
+      return
+    }
+    if (id === 'ask-for-help') {
       setShowHelpDialog(true)
-      setActiveNavItem('dashboard')
-    } else if (activeNavItem === 'dealers') {
+      return
+    }
+
+    setActiveNavItem(id)
+
+    if (id === 'dealers') {
       setMainView('dealers')
-    } else if (activeNavItem === 'dashboard') {
+      setSelectedDealer(null)
+      setDealerSearchResults([])
+      setDealerSearchQuery('')
+    } else if (id === 'dashboard') {
       setMainView('dashboard')
     }
-  }, [activeNavItem])
+  }, [])
 
   const sendLocalAgentMessage = useCallback(async (content: string, loadingId: string) => {
     const response = await api.sendLocalAgentMessage(content)
@@ -172,7 +181,7 @@ function App() {
     <div className="app">
       <Sidebar
         activeNavItem={activeNavItem}
-        onNavItemSelect={setActiveNavItem}
+        onNavItemSelect={handleNavItemSelect}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(prev => !prev)}
       />

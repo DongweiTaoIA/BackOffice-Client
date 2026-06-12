@@ -77,6 +77,32 @@
   flex-wrap: wrap;
 }
 
+.filter-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary, #fff);
+  transition: border-color 0.15s;
+}
+
+.filter-checkbox:hover {
+  border-color: #3b82f6;
+}
+
+.filter-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #7c3aed;
+  cursor: pointer;
+}
+
 .filter-group {
   position: relative;
   display: inline-flex;
@@ -300,88 +326,100 @@
 }
 
 /* Map View */
+/* Override Leaflet default div icon styles */
+.dealers-leaflet-map .leaflet-div-icon {
+  background: none;
+  border: none;
+}
+
 .dealers-map-view {
   animation: fadeIn 0.2s ease;
-}
-
-.map-container {
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  margin-bottom: 20px;
-}
-
-.canada-map-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.map-bubble {
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.map-bubble:hover circle {
-  opacity: 1 !important;
-  stroke-width: 3;
-}
-
-.map-bubble text {
-  pointer-events: none;
-}
-
-.map-list-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 12px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.map-list-count {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--text-secondary);
-}
-
-.map-dealer-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  height: calc(100vh - 180px);
 }
 
-.map-dealer-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: var(--bg-primary, #fff);
+.dealers-leaflet-map {
+  flex: 1;
+  border-radius: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  z-index: 1;
+}
+
+/* Map cluster icons */
+.dealer-cluster-icon {
+  background: none !important;
+  border: none !important;
+}
+
+.dealer-cluster-icon.leaflet-div-icon {
+  background: none !important;
+  border: none !important;
+}
+
+.cluster-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.7);
+  border: 3px solid rgba(79, 70, 229, 0.9);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
   cursor: pointer;
-  transition: border-color 0.12s;
+  transition: transform 0.15s;
 }
 
-.map-dealer-item:hover {
-  border-color: #3b82f6;
+.cluster-bubble:hover {
+  transform: scale(1.1);
+  background: rgba(99, 102, 241, 0.9);
 }
 
-.map-dealer-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.cluster-count {
+  font-size: 14px;
+  line-height: 1;
 }
 
-.map-dealer-location {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
+.cluster-label {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+/* Individual dealer pins */
+.dealer-pin-icon {
+  background: none !important;
+  border: none !important;
+}
+
+.dealer-pin-icon.leaflet-div-icon {
+  background: none !important;
+  border: none !important;
+}
+
+.dealer-pin {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #6366f1;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.map-loading-overlay {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
   color: var(--text-secondary);
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 /* Infinite scroll */

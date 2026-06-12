@@ -132,6 +132,7 @@ export interface DealerPagedParams {
   province?: string;
   sortBy?: string;
   sortDir?: string;
+  excludeDemo?: boolean;
 }
 
 export interface DealerDetailsDto {
@@ -549,6 +550,7 @@ async function getDealersPaged(params: DealerPagedParams = {}): Promise<DealerPa
   if (params.province) searchParams.set('province', params.province);
   if (params.sortBy) searchParams.set('sortBy', params.sortBy);
   if (params.sortDir) searchParams.set('sortDir', params.sortDir);
+  if (params.excludeDemo) searchParams.set('excludeDemo', 'true');
 
   const response = await authorizedFetch(
     `${API_BASE_URL}/api/dealers?${searchParams.toString()}`
@@ -1004,6 +1006,33 @@ export const api = {
       lastMeaningfulMessage = content;
     }
 
+    // Follow-up detection: if user provides just a dealer code and we have prior eligibility context,
+    // treat it as the same eligibility check with the new dealer
+    const followUpDealerMatch = effectiveContent.match(/\b([A-Z]{2}\d{4,6})\b/i);
+    if (lastEligibilityContext && followUpDealerMatch && /^(what about|how about|and|check|same for|also)\b/i.test(effectiveContent.trim())) {
+      const newDealerCode = followUpDealerMatch[1].toUpperCase();
+      const eligibility = await checkEligibility({ dealerId: newDealerCode, programId: lastEligibilityContext.product });
+      if (eligibility.isEligible) {
+        lastEligibilityContext = { dealerCode: eligibility.dealerCode, product: eligibility.product };
+      }
+      const dealerNotFound = eligibility.summary.toLowerCase().includes('not found');
+      const suggestions: SuggestedAction[] = eligibility.isEligible
+        ? [{ label: 'Deactivate', action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` }]
+        : (eligibility.dealerCode && !dealerNotFound)
+          ? [{ label: 'Activate Product', action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
+             { label: 'View Dealer Details', action: 'viewDealer', payload: eligibility.dealerCode }]
+          : [];
+      return {
+        id: createId('local-assistant'),
+        conversationId: 'local-ollama-demo',
+        role: 'assistant',
+        content: formatEligibilityResult(eligibility),
+        timestamp: new Date().toISOString(),
+        eligibilityResult: eligibility,
+        suggestions: suggestions.length > 0 ? suggestions : undefined,
+      };
+    }
+
     // Use AI to understand intent and extract entities; fall back to regex if LLM fails
     let toolCall: AgentToolCall;
     try {
@@ -1018,6 +1047,31 @@ export const api = {
       if (regexFallback) {
         toolCall = regexFallback;
       }
+    }
+
+    // Additional follow-up: LLM couldn't parse but message has a dealer code and we have context
+    if ((toolCall.tool === 'none' || toolCall.tool === 'generalChat') && lastEligibilityContext && followUpDealerMatch) {
+      const newDealerCode = followUpDealerMatch[1].toUpperCase();
+      const eligibility = await checkEligibility({ dealerId: newDealerCode, programId: lastEligibilityContext.product });
+      if (eligibility.isEligible) {
+        lastEligibilityContext = { dealerCode: eligibility.dealerCode, product: eligibility.product };
+      }
+      const dealerNotFound = eligibility.summary.toLowerCase().includes('not found');
+      const suggestions: SuggestedAction[] = eligibility.isEligible
+        ? [{ label: 'Deactivate', action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` }]
+        : (eligibility.dealerCode && !dealerNotFound)
+          ? [{ label: 'Activate Product', action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
+             { label: 'View Dealer Details', action: 'viewDealer', payload: eligibility.dealerCode }]
+          : [];
+      return {
+        id: createId('local-assistant'),
+        conversationId: 'local-ollama-demo',
+        role: 'assistant',
+        content: formatEligibilityResult(eligibility),
+        timestamp: new Date().toISOString(),
+        eligibilityResult: eligibility,
+        suggestions: suggestions.length > 0 ? suggestions : undefined,
+      };
     }
 
     // Second-pass AI check: if LLM missed a dealer search intent, ask again with a focused prompt
