@@ -5,6 +5,8 @@ import ChatArea from './components/ChatArea'
 import DealerSearch from './components/DealerSearch'
 import DealerDetails from './components/DealerDetails'
 import Dealers from './components/Dealers'
+import Contracts from './components/Contracts'
+import Claims from './components/Claims'
 import BugReportDialog from './components/support/BugReportDialog'
 import FeatureRequestDialog from './components/support/FeatureRequestDialog'
 import HelpRequestDialog from './components/support/HelpRequestDialog'
@@ -34,7 +36,7 @@ function App() {
   const [showBugDialog, setShowBugDialog] = useState(false)
   const [showFeatureDialog, setShowFeatureDialog] = useState(false)
   const [showHelpDialog, setShowHelpDialog] = useState(false)
-  const [mainView, setMainView] = useState<'dashboard' | 'dealers' | 'dealerSearch' | 'dealerDetails'>('dashboard')
+  const [mainView, setMainView] = useState<'dashboard' | 'dealers' | 'contracts' | 'claims' | 'dealerSearch' | 'dealerDetails'>('dashboard')
   const [dealerSearchResults, setDealerSearchResults] = useState<DealerSearchResult[]>([])
   const [dealerSearchQuery, setDealerSearchQuery] = useState('')
   const [selectedDealer, setSelectedDealer] = useState<DealerDetailsDto | null>(null)
@@ -61,6 +63,10 @@ function App() {
       setSelectedDealer(null)
       setDealerSearchResults([])
       setDealerSearchQuery('')
+    } else if (id === 'contracts') {
+      setMainView('contracts')
+    } else if (id === 'claims') {
+      setMainView('claims')
     } else if (id === 'dashboard') {
       setMainView('dashboard')
     }
@@ -194,6 +200,12 @@ function App() {
             externalQuery={dealerSearchQuery}
             externalDealer={selectedDealer}
           />
+        )}
+        {mainView === 'contracts' && (
+          <Contracts onSendMessage={handleSendMessage} />
+        )}
+        {mainView === 'claims' && (
+          <Claims onSendMessage={handleSendMessage} />
         )}
         {mainView === 'dealerSearch' && (
           <DealerSearch

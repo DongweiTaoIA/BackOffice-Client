@@ -157,6 +157,148 @@ export interface DealerDetailsDto {
   producerClass: string | null;
 }
 
+export interface ContractSearchResult {
+  contractKey: number;
+  contractNum: string;
+  productId: string;
+  dealerId: string;
+  dealerName: string | null;
+  contractStatPri: string;
+  contractStatSec: string;
+  effectDt: string;
+  expiryDt: string | null;
+  extContractNum: string | null;
+}
+
+export interface ContractPagedResult {
+  items: ContractSearchResult[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export interface ContractPagedParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  product?: string;
+  dealerId?: string;
+  sortBy?: string;
+  sortDir?: string;
+}
+
+export interface ContractDetailsDto {
+  contractKey: number;
+  contractNum: string;
+  companyId: string;
+  productId: string;
+  dealerId: string;
+  dealerName: string | null;
+  contractType: string;
+  programId: string | null;
+  contractStatPri: string;
+  contractStatSec: string;
+  createDt: string;
+  createdBy: string;
+  calcDt: string | null;
+  finalDt: string | null;
+  finalBy: string | null;
+  effectDt: string;
+  effectKm: number | null;
+  expiryDt: string | null;
+  expiryKm: number | null;
+  lastTransferDt: string | null;
+  lastCancelDt: string | null;
+  lastReinstateDt: string | null;
+  vehicleKey: number | null;
+  numOfKm: number | null;
+  numOfMiles: number | null;
+  purchaseDt: string | null;
+  deliveryDt: string | null;
+  vehiclePrice: number;
+  vehicleRebate: number | null;
+  licensePlate: string | null;
+  stockNum: string | null;
+  vehicleCondition: string;
+  classCode: string | null;
+}
+
+export interface ClaimSearchResult {
+  claimKey: number;
+  claimNum: string;
+  contractKey: number;
+  contractNum: string | null;
+  claimType: string | null;
+  lossDt: string;
+  claimDt: string;
+  claimStatPri: string;
+  claimStatSec: string;
+  adjusterId: string | null;
+  claimDealerId: string | null;
+  dealerName: string | null;
+  roNum: string | null;
+  extClaimNum: string | null;
+}
+
+export interface ClaimPagedResult {
+  items: ClaimSearchResult[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export interface ClaimPagedParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  claimType?: string;
+  dealerId?: string;
+  sortBy?: string;
+  sortDir?: string;
+}
+
+export interface ClaimDetailsDto {
+  claimKey: number;
+  claimNum: string;
+  contractKey: number;
+  contractNum: string | null;
+  claimType: string | null;
+  lossDt: string;
+  lossType: string | null;
+  claimDt: string;
+  eClaimReadyDt: string | null;
+  submitDt: string | null;
+  openDt: string | null;
+  claimStatPri: string;
+  claimStatSec: string;
+  adjusterId: string | null;
+  adjudPriority: string | null;
+  adjudStat: string | null;
+  closedDt: string | null;
+  numOfKm: number | null;
+  numOfMiles: number | null;
+  liabilityLimit: number | null;
+  overrideYN: string | null;
+  overrideBy: string | null;
+  overrideDt: string | null;
+  licensePlate: string | null;
+  roNum: string | null;
+  contactName: string | null;
+  contactPhoneNum: string | null;
+  contactEmail: string | null;
+  repairCenter: string | null;
+  comments: string | null;
+  extClaimNum: string | null;
+  claimDealerId: string | null;
+  dealerName: string | null;
+  createdBy: string | null;
+  createdDt: string | null;
+}
+
 interface OllamaMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -577,6 +719,78 @@ async function getDealerDetails(dealerCode: string): Promise<DealerDetailsDto> {
   return await response.json() as DealerDetailsDto;
 }
 
+async function getContractsPaged(params: ContractPagedParams = {}): Promise<ContractPagedResult> {
+  const searchParams = new URLSearchParams();
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  if (params.search) searchParams.set('search', params.search);
+  if (params.status) searchParams.set('status', params.status);
+  if (params.product) searchParams.set('product', params.product);
+  if (params.dealerId) searchParams.set('dealerId', params.dealerId);
+  if (params.sortBy) searchParams.set('sortBy', params.sortBy);
+  if (params.sortDir) searchParams.set('sortDir', params.sortDir);
+
+  const response = await authorizedFetch(
+    `${CONTRACT_API_BASE_URL}/api/contracts?${searchParams.toString()}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Contract List Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json() as ContractPagedResult;
+}
+
+async function getContractDetails(contractNum: string): Promise<ContractDetailsDto> {
+  const response = await authorizedFetch(
+    `${CONTRACT_API_BASE_URL}/api/contracts/${encodeURIComponent(contractNum)}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Contract Details Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json() as ContractDetailsDto;
+}
+
+async function getClaimsPaged(params: ClaimPagedParams = {}): Promise<ClaimPagedResult> {
+  const searchParams = new URLSearchParams();
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  if (params.search) searchParams.set('search', params.search);
+  if (params.status) searchParams.set('status', params.status);
+  if (params.claimType) searchParams.set('claimType', params.claimType);
+  if (params.dealerId) searchParams.set('dealerId', params.dealerId);
+  if (params.sortBy) searchParams.set('sortBy', params.sortBy);
+  if (params.sortDir) searchParams.set('sortDir', params.sortDir);
+
+  const response = await authorizedFetch(
+    `${API_BASE_URL}/api/claims?${searchParams.toString()}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Claim List Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json() as ClaimPagedResult;
+}
+
+async function getClaimDetails(claimNum: string): Promise<ClaimDetailsDto> {
+  const response = await authorizedFetch(
+    `${API_BASE_URL}/api/claims/${encodeURIComponent(claimNum)}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Claim Details Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json() as ClaimDetailsDto;
+}
+
 async function getContractStatus(contractId: string): Promise<ContractStatus> {
   const response = await authorizedFetch(
     `${CONTRACT_API_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/status`
@@ -900,6 +1114,14 @@ export const api = {
   searchDealers: (query: string) => searchDealers(query),
   getDealersPaged: (params?: DealerPagedParams) => getDealersPaged(params),
   getDealerDetails: (dealerCode: string) => getDealerDetails(dealerCode),
+
+  // Contract search & details
+  getContractsPaged: (params?: ContractPagedParams) => getContractsPaged(params),
+  getContractDetails: (contractNum: string) => getContractDetails(contractNum),
+
+  // Claim search & details
+  getClaimsPaged: (params?: ClaimPagedParams) => getClaimsPaged(params),
+  getClaimDetails: (claimNum: string) => getClaimDetails(claimNum),
 
   sendLocalAgentMessage: async (content: string): Promise<MessageDto> => {
     // Handle pending deactivation expiry response
