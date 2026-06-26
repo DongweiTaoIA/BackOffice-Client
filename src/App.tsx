@@ -7,11 +7,12 @@ import DealerDetails from './components/DealerDetails'
 import Dealers from './components/Dealers'
 import Contracts from './components/Contracts'
 import Claims from './components/Claims'
+import CancellationPage from './components/CancellationPage'
 import BugReportDialog from './components/support/BugReportDialog'
 import FeatureRequestDialog from './components/support/FeatureRequestDialog'
 import HelpRequestDialog from './components/support/HelpRequestDialog'
 import { api } from './services/api'
-import type { EligibilityResult, SuggestedAction, DealerSearchResult, DealerDetailsDto } from './services/api'
+import type { EligibilityResult, SuggestedAction, DealerSearchResult, DealerDetailsDto, CancellationEligibilityResult } from './services/api'
 import { useAuth } from './auth/useAuth'
 import './App.css'
 
@@ -36,10 +37,11 @@ function App() {
   const [showBugDialog, setShowBugDialog] = useState(false)
   const [showFeatureDialog, setShowFeatureDialog] = useState(false)
   const [showHelpDialog, setShowHelpDialog] = useState(false)
-  const [mainView, setMainView] = useState<'dashboard' | 'dealers' | 'contracts' | 'claims' | 'dealerSearch' | 'dealerDetails'>('dashboard')
+  const [mainView, setMainView] = useState<'dashboard' | 'dealers' | 'contracts' | 'claims' | 'dealerSearch' | 'dealerDetails' | 'cancellation'>('dashboard')
   const [dealerSearchResults, setDealerSearchResults] = useState<DealerSearchResult[]>([])
   const [dealerSearchQuery, setDealerSearchQuery] = useState('')
   const [selectedDealer, setSelectedDealer] = useState<DealerDetailsDto | null>(null)
+  const [cancellationContext, setCancellationContext] = useState<CancellationEligibilityResult | null>(null)
 
   // Handle sidebar nav item clicks
   const handleNavItemSelect = useCallback((id: string) => {
@@ -85,6 +87,10 @@ function App() {
       setSelectedDealer(response.dealerDetails)
       setMainView('dealers')
       setActiveNavItem('dealers')
+    } else if (response.cancellationResult) {
+      setCancellationContext(response.cancellationResult)
+      setMainView('cancellation')
+      setActiveNavItem('contracts')
     }
 
     setMessages(prev => prev.map(m => m.id === loadingId ? {
@@ -159,6 +165,34 @@ function App() {
     handleSendMessage(messageContent)
   }, [handleSendMessage])
 
+  // Intercept suggestion chip clicks that should NOT be sent as chat
+  // messages — currently only "View Dealer", which opens the dealer in the
+  // main panel instead of being routed through the LLM as a search query.
+  const handleSuggestion = useCallback((suggestion: SuggestedAction): boolean | void => {
+    if (suggestion.action === 'viewDealer' && suggestion.payload) {
+      const dealerCode = suggestion.payload
+      void (async () => {
+        try {
+          const details = await api.getDealerDetails(dealerCode)
+          setSelectedDealer(details)
+          setDealerSearchResults([])
+          setDealerSearchQuery('')
+          setMainView('dealers')
+          setActiveNavItem('dealers')
+        } catch (error) {
+          console.error('Failed to load dealer details:', error)
+        }
+      })()
+      return true
+    }
+    return false
+  }, [])
+
+  const handleNewChat = useCallback(() => {
+    setMessages([])
+    api.resetLocalAgentState()
+  }, [])
+
   if (isLoading) {
     return (
       <div className="app-login">
@@ -207,6 +241,15 @@ function App() {
         {mainView === 'claims' && (
           <Claims onSendMessage={handleSendMessage} />
         )}
+        {mainView === 'cancellation' && cancellationContext && (
+          <CancellationPage
+            eligibility={cancellationContext}
+            onBack={() => {
+              setCancellationContext(null)
+              setMainView('contracts')
+            }}
+          />
+        )}
         {mainView === 'dealerSearch' && (
           <DealerSearch
             results={dealerSearchResults}
@@ -239,6 +282,8 @@ function App() {
         isProcessing={isProcessing}
         chatOpen={chatOpen}
         onToggleChat={() => setChatOpen(prev => !prev)}
+        onNewChat={handleNewChat}
+        onSuggestion={handleSuggestion}
       />
       {showBugDialog && <BugReportDialog onClose={() => setShowBugDialog(false)} />}
       {showFeatureDialog && <FeatureRequestDialog onClose={() => setShowFeatureDialog(false)} />}

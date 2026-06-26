@@ -789,6 +789,10 @@
   align-items: flex-end;
 }
 
+.st-comment-error {
+  margin: 0 0 8px 0;
+}
+
 .st-comment-input-wrapper {
   flex: 1;
   display: flex;

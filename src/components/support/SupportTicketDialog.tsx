@@ -89,6 +89,7 @@ export default function SupportTicketDialog({
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'mine'>('all')
   const [commentText, setCommentText] = useState('')
+  const [commentError, setCommentError] = useState<string | null>(null)
 
   // Form state
   const [formValues, setFormValues] = useState<Record<string, string>>({})
@@ -210,6 +211,9 @@ export default function SupportTicketDialog({
     const doSelect = async () => {
       setShowForm(false)
       setDetailLoading(true)
+      setCommentError(null)
+      setCommentText('')
+      setCommentFiles([])
       try {
         const ticket = await api.getSupportTicket(id)
         setSelectedTicket(ticket)
@@ -292,6 +296,7 @@ export default function SupportTicketDialog({
 
   const handleAddComment = async () => {
     if ((!commentText.trim() && commentFiles.length === 0) || !selectedTicket) return
+    setCommentError(null)
     try {
       // If there are pasted images, upload them as attachments first
       let fullText = commentText.trim()
@@ -311,7 +316,7 @@ export default function SupportTicketDialog({
       setCommentText('')
       setCommentFiles([])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add comment')
+      setCommentError(err instanceof Error ? err.message : 'Failed to add comment')
     }
   }
 
@@ -992,6 +997,9 @@ export default function SupportTicketDialog({
               )
             })}
           </div>
+          {commentError && (
+            <div className="st-error st-comment-error"><AlertCircle size={16} /> {commentError}</div>
+          )}
           <div className="st-comment-input-row">
             <div className="st-comment-input-wrapper">
               <textarea
@@ -999,7 +1007,7 @@ export default function SupportTicketDialog({
                 className="st-comment-input"
                 placeholder="Add a comment... (paste images with Ctrl+V)"
                 value={commentText}
-                onChange={e => setCommentText(e.target.value)}
+                onChange={e => { setCommentText(e.target.value); if (commentError) setCommentError(null) }}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddComment() } }}
                 onPaste={handleCommentPaste}
                 rows={commentFiles.length > 0 ? 2 : 1}

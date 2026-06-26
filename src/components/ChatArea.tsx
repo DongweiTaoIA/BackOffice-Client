@@ -5,6 +5,7 @@ import {
   Paperclip,
   Mic,
   MessageSquare,
+  MessageSquarePlus,
   ChevronRight,
   CheckCircle,
   XCircle,
@@ -12,7 +13,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import type { Message } from '../App'
-import type { EligibilityResult } from '../services/api'
+import type { EligibilityResult, SuggestedAction } from '../services/api'
 import './ChatArea.css'
 
 function formatMessageContent(content: string): string {
@@ -31,12 +32,35 @@ interface ChatAreaProps {
   isProcessing: boolean
   chatOpen: boolean
   onToggleChat: () => void
+  onNewChat: () => void
+  /**
+   * Optional handler invoked when a suggestion chip is clicked. When it
+   * returns true the click is considered handled and is NOT forwarded to
+   * onSendMessage. Falsy return (or no handler) preserves the legacy
+   * behaviour of sending the action string as a chat message.
+   */
+  onSuggestion?: (suggestion: SuggestedAction) => boolean | void
 }
 
-function ChatArea({ messages, onSendMessage, onRetry, isProcessing, chatOpen, onToggleChat }: ChatAreaProps) {
+const CHAT_WIDTH_STORAGE_KEY = 'chatArea.width'
+const CHAT_MIN_WIDTH = 320
+const CHAT_MAX_WIDTH = 900
+const CHAT_DEFAULT_WIDTH = 400
+
+function readStoredChatWidth(): number {
+  if (typeof window === 'undefined') return CHAT_DEFAULT_WIDTH
+  const raw = window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY)
+  const parsed = raw ? parseInt(raw, 10) : NaN
+  if (!Number.isFinite(parsed)) return CHAT_DEFAULT_WIDTH
+  return Math.min(CHAT_MAX_WIDTH, Math.max(CHAT_MIN_WIDTH, parsed))
+}
+
+function ChatArea({ messages, onSendMessage, onRetry, isProcessing, chatOpen, onToggleChat, onNewChat, onSuggestion }: ChatAreaProps) {
   const [input, setInput] = useState('')
+  const [chatWidth, setChatWidth] = useState<number>(readStoredChatWidth)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isResizingRef = useRef(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -45,6 +69,41 @@ function ChatArea({ messages, onSendMessage, onRetry, isProcessing, chatOpen, on
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Persist resized chat width.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, String(chatWidth))
+    } catch {
+      /* ignore */
+    }
+  }, [chatWidth])
+
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizingRef.current = true
+    const startX = e.clientX
+    const startWidth = chatWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizingRef.current) return
+      // Chat panel is on the right; dragging left increases width.
+      const delta = startX - ev.clientX
+      const next = Math.min(CHAT_MAX_WIDTH, Math.max(CHAT_MIN_WIDTH, startWidth + delta))
+      setChatWidth(next)
+    }
+    const onUp = () => {
+      isResizingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -88,7 +147,18 @@ function ChatArea({ messages, onSendMessage, onRetry, isProcessing, chatOpen, on
   }
 
   return (
-    <div className="chat-area">
+    <div
+      className="chat-area"
+      style={{ width: chatWidth, minWidth: chatWidth, maxWidth: chatWidth }}
+    >
+      {/* Resize handle on the left edge */}
+      <div
+        className="chat-resize-handle"
+        onMouseDown={handleResizeMouseDown}
+        title="Drag to resize"
+        role="separator"
+        aria-orientation="vertical"
+      />
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-left">
@@ -98,6 +168,14 @@ function ChatArea({ messages, onSendMessage, onRetry, isProcessing, chatOpen, on
           </div>
         </div>
         <div className="chat-header-right">
+          <button
+            className="chat-new-btn"
+            onClick={onNewChat}
+            title="New chat"
+            disabled={messages.length === 0 && !isProcessing}
+          >
+            <MessageSquarePlus size={18} />
+          </button>
           <button className="chat-collapse-btn" onClick={onToggleChat} title="Collapse chat">
             <ChevronRight size={20} />
           </button>
@@ -156,7 +234,10 @@ function ChatArea({ messages, onSendMessage, onRetry, isProcessing, chatOpen, on
                             <button
                               key={i}
                               className="suggestion-chip"
-                              onClick={() => onSendMessage(s.action)}
+                              onClick={() => {
+                                const handled = onSuggestion?.(s)
+                                if (!handled) onSendMessage(s.action)
+                              }}
                               disabled={isProcessing}
                             >
                               {s.label}

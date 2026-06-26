@@ -1,7 +1,7 @@
 import { msalInstance } from '../auth/AuthProvider';
 import { loginRequest } from '../auth/authConfig';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://localhost:5011';
 const OLLAMA_API_BASE_URL = import.meta.env.VITE_OLLAMA_API_BASE_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = import.meta.env.VITE_OLLAMA_MODEL || 'llama3.2:3b';
 const CONTRACT_API_BASE_URL = import.meta.env.VITE_CONTRACT_API_BASE_URL || API_BASE_URL;
@@ -84,13 +84,22 @@ export interface MessageDto {
   suggestions?: SuggestedAction[];
   dealerSearchResults?: DealerSearchResult[];
   dealerDetails?: DealerDetailsDto;
+  /** When the assistant wants the host UI to open the cancellation page for a contract. */
+  cancellationResult?: CancellationEligibilityResult;
 }
 
 export interface EligibilityResult {
   isEligible: boolean;
   dealerCode: string;
   dealerName: string;
+  /** Display label for the product as it appeared in the query (e.g. "Extended Warranty" or "EW"). */
   product: string;
+  /** Canonical product code resolved by the backend (e.g. "EW", "DW"). Always a stable code, never a display name. */
+  productId?: string;
+  /** Program code resolved by the backend (e.g. "EWXX001"). Populated when the query referenced a specific program. */
+  programId?: string;
+  /** Program display name resolved by the backend (e.g. "Retail Wearable Parts"). */
+  programName?: string;
   environment: string;
   programs: ProgramInfo[];
   summary: string;
@@ -114,6 +123,14 @@ export interface DealerSearchResult {
   dealerStat: string;
   city: string | null;
   provState: string | null;
+}
+
+export interface ProgramLookupResult {
+  programId: string;
+  programName: string;
+  programNameFr?: string | null;
+  /** Parent product code (ContractGroup), e.g. "EW", "DW". */
+  productId: string;
 }
 
 export interface DealerPagedResult {
@@ -223,6 +240,64 @@ export interface ContractDetailsDto {
   stockNum: string | null;
   vehicleCondition: string;
   classCode: string | null;
+
+  // Optional / extended properties exposed by the backend.
+  importYN?: string | null;
+  claimOption?: string | null;
+  commercialYN?: string | null;
+  companyName?: string | null;
+  companyRepKey?: number | null;
+  financingType?: string | null;
+  financedAmt?: number | null;
+  downPaymentAmt?: number | null;
+  promoValue?: string | null;
+  apr?: number | null;
+  lienHolderId?: string | null;
+  lienHolderLabel?: string | null;
+  lienHolderBranchId?: string | null;
+  financialInstId?: string | null;
+  financialInstLabel?: string | null;
+  premiumFinInst?: string | null;
+  customer1Key?: number | null;
+  customer2Key?: number | null;
+  isAboriginalYN?: string | null;
+  aboriginalCardNum?: string | null;
+  isBuyerResidesOnReserveYN?: string | null;
+  isBuyerDeliverToReserveYN?: string | null;
+  language?: string;
+  paymentFreq?: string | null;
+  paymentStat?: string;
+  paymentMeth?: string | null;
+  isReceivedYN?: string;
+  formRevKey?: number | null;
+  consentFormRevKey?: number | null;
+  contractSource?: string;
+  extContractNum?: string | null;
+  isVehicleRegisteredYN?: string;
+  mespMonths?: number | null;
+  mespKm?: number | null;
+  brokerId?: string | null;
+  brokerName?: string | null;
+  modDtTime?: string;
+  modLoginId?: string;
+  computedFinanceType?: string | null;
+
+  // Enriched customer / vehicle / claim info (from dmCustomer, dmVehicle, dmClaim).
+  customer1Name?: string | null;
+  customer2Name?: string | null;
+  customerAddress?: string | null;
+  customerCity?: string | null;
+  customerProvState?: string | null;
+  customerPostalZip?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  vin?: string | null;
+  vehicleYear?: number | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  vehicleOdometer?: number | null;
+  openClaimCount?: number;
+  totalClaimCount?: number;
 }
 
 export interface ClaimSearchResult {
@@ -349,7 +424,40 @@ interface ContractStatus {
   source: string;
 }
 
-interface CancellationEligibilityResult {
+export interface CancellationMessage {
+  msgText: string;
+  /** Single-char message type from the SP (e.g. "E" error/explanation, "W" warning, "I" info). */
+  msgType: string;
+}
+
+export interface CancellationRefundDetails {
+  // Customer refund side.
+  retailPremiumPaidAmount?: number;
+  refundAmount?: number;
+  factor?: number;
+  claimsPaidAmount?: number;
+  adminFee?: number;
+  netRefundAmount?: number;
+  refundTax1Amount?: number;
+  refundTax2Amount?: number;
+  totalRefund?: number;
+  // Dealer chargeback side.
+  dealerMarkupAmount?: number;
+  dealerMarkupPercentage?: number;
+  netDealerChargebackAmount?: number;
+  chargebackTax1Amount?: number;
+  chargebackTax2Amount?: number;
+  dealerChargebackAmount?: number;
+  iapPortionAmount?: number;
+  // Tax & cheque flags.
+  tax1Value?: number;
+  tax2Value?: number;
+  enableIssueChequeYN?: string;
+  tax1RemitYN?: string | null;
+  tax2RemitYN?: string | null;
+}
+
+export interface CancellationEligibilityResult {
   isEligible: boolean;
   contractNumber: string;
   status: string;
@@ -360,6 +468,23 @@ interface CancellationEligibilityResult {
   refundAmount?: number;
   refundType: string;
   summary: string;
+  /** Messages returned by DPP_DP612ContractCancel_Calc (warnings / rule explanations). */
+  messages?: CancellationMessage[];
+  /** Full refund / chargeback breakdown returned by DPP_DP612ContractCancel_Calc. */
+  refundDetails?: CancellationRefundDetails;
+}
+
+export interface CancellationEligibilityParams {
+  /** Cancellation date (YYYY-MM-DD). Defaults to today on the server. */
+  cancDt?: string;
+  /** Cancellation rule ID, e.g. "CR001" (Customer Cancellation). */
+  ruleId?: string;
+  /** Cancel type, e.g. "CS" (Customer), "DL" (Dealer). */
+  cancType?: string;
+  /** Language: "E" or "F". */
+  lang?: string;
+  /** Override user id passed to the SP. */
+  userId?: string;
 }
 
 interface MaxMarkupResult {
@@ -397,7 +522,7 @@ function extractJsonObject(content: string): unknown {
 
 function normalizeToolCall(value: unknown): AgentToolCall {
   if (!value || typeof value !== 'object') {
-    return { tool: 'none', answer: 'I could not understand that request.' };
+    return { tool: 'none', answer: t('couldNotUnderstand') };
   }
 
   const candidate = value as Record<string, unknown>;
@@ -482,6 +607,118 @@ function normalizeToolCall(value: unknown): AgentToolCall {
   };
 }
 
+// ---------- Language detection & localization ----------
+type Lang = 'fr' | 'en';
+
+// Detected language for the current user message. Updated at the start of
+// sendLocalAgentMessage and consumed by formatters / LLM prompts.
+let currentLanguage: Lang = 'en';
+
+function detectLanguage(text: string): Lang {
+  const t = text.toLowerCase().trim();
+
+  // Suggestion-button action keywords and short control messages don't carry
+  // language information — keep the current sticky language instead.
+  const controlKeyword = /^(deactivate|deactive|activate|active|today|future date|future|later|now|yes|no|try again|again|retry|repeat|redo|one more time|do it again|same question|set up|setup|\d{4}-\d{2}-\d{2})$/i;
+  if (controlKeyword.test(t)) return currentLanguage;
+
+  // French-specific diacritics are a strong signal.
+  if (/[àâäçéèêëîïôöùûüÿœæ]/i.test(text)) return 'fr';
+
+  // Common French words / phrases that don't appear (or rarely) in English.
+  const frenchMarkers = /\b(est-ce que|peut|peut-il|peut-elle|vendre|vente|bonjour|merci|comment|pourquoi|combien|quoi|où|quel|quelle|quels|quelles|oui|non|aujourd'hui|demain|hier|qui|aussi|encore|donc|alors|avec|sans|pour|dans|sur|chez|annuler|annulation|activer|désactiver|désactivation|marchand|concessionnaire|contrat|produit|programme|éligible|admissible|svp|s'il vous plaît|s'il te plaît)\b/i;
+  if (frenchMarkers.test(t)) return 'fr';
+
+  return 'en';
+}
+
+const translations = {
+  yesEligible:                 { en: '✅ Yes — Eligible',                                                    fr: '✅ Oui — Admissible' },
+  noEligibleNotSet:            { en: '❌ No — Not set up for this product.',                                fr: '❌ Non — Le produit n\'est pas configuré.' },
+  noEligibleSuspended:         { en: '❌ No — Dealer account is currently suspended.',                      fr: '❌ Non — Le compte du marchand est actuellement suspendu.' },
+  noEligibleInactive:          { en: '❌ No — Dealer account is inactive.',                                 fr: '❌ Non — Le compte du marchand est inactif.' },
+  noEligibleExpired:           { en: '❌ No — Product enrollment has expired.',                             fr: '❌ Non — L\'inscription au produit est expirée.' },
+  noEligibleDealerNotFound:    { en: '❌ No — Dealer was not found in the system.',                         fr: '❌ Non — Le marchand est introuvable dans le système.' },
+  noEligibleDiscontinued:      { en: '❌ No — Program is discontinued.',                                    fr: '❌ Non — Le programme est discontinué.' },
+  noEligibleNotActivated:      { en: '❌ No — Product is not activated for this dealer.',                   fr: '❌ Non — Le produit n\'est pas activé pour ce marchand.' },
+
+  cancelEligibleHeader:        { en: '✅ **Yes — Eligible for Cancellation**',                              fr: '✅ **Oui — Admissible à l\'annulation**' },
+  cancelNotEligibleHeader:     { en: '❌ **No — Not Eligible for Cancellation**',                           fr: '❌ **Non — Non admissible à l\'annulation**' },
+  cancelPromptQuestion:        { en: 'Do you want to cancel this contract?',                                fr: 'Voulez-vous annuler ce contrat ?' },
+  cancelOpeningPage:           { en: 'Opening cancellation page…',                                          fr: 'Ouverture de la page d\'annulation…' },
+  cancelDeclined:              { en: 'OK — cancellation not started.',                                      fr: 'D\'accord — annulation non démarrée.' },
+  labelCancelContract:         { en: 'Cancel Contract',                                                     fr: 'Annuler le contrat' },
+  labelNotNow:                 { en: 'Not now',                                                             fr: 'Pas maintenant' },
+  fieldContract:               { en: '**Contract:**',                                                       fr: '**Contrat :**' },
+  fieldStatus:                 { en: '**Status:**',                                                         fr: '**Statut :**' },
+  fieldProduct:                { en: '**Product:**',                                                        fr: '**Produit :**' },
+  fieldEffectiveExpiry:        { en: '**Effective:**',                                                      fr: '**Effectif :**' },
+  fieldExpiry:                 { en: '**Expiry:**',                                                         fr: '**Expiration :**' },
+  fieldRefund:                 { en: '**Refund:**',                                                         fr: '**Remboursement :**' },
+  fieldReason:                 { en: '**Reason:**',                                                         fr: '**Raison :**' },
+  fieldDealer:                 { en: '**Dealer:**',                                                         fr: '**Marchand :**' },
+  fieldProgram:                { en: '**Program:**',                                                        fr: '**Programme :**' },
+  fieldExpiryDate:             { en: '**Expiry Date:**',                                                    fr: '**Date d\'expiration :**' },
+  fieldMaxMarkup:              { en: '**Max Markup:**',                                                     fr: '**Marge maximale :**' },
+
+  programNotFound:             { en: '❌ **Program Not Found**',                                            fr: '❌ **Programme introuvable**' },
+  noMarkupData:                { en: '⚠️ **No Markup Data**',                                              fr: '⚠️ **Aucune donnée de marge**' },
+  noMarkupRecords:             { en: '**Result:** No markup records found for this program.',              fr: '**Résultat :** Aucun enregistrement de marge trouvé pour ce programme.' },
+  maxMarkupHeader:             { en: '✅ **Maximum Markup**',                                               fr: '✅ **Marge maximale**' },
+
+  activationSuccess:           { en: '✅ **Activation Successful**',                                        fr: '✅ **Activation réussie**' },
+  activationFailed:            { en: '❌ **Activation Failed**',                                            fr: '❌ **Échec de l\'activation**' },
+  deactivationSuccess:         { en: '✅ **Deactivation Successful**',                                      fr: '✅ **Désactivation réussie**' },
+  deactivationFailed:          { en: '❌ **Deactivation Failed**',                                         fr: '❌ **Échec de la désactivation**' },
+  effective:                   { en: '**Effective:**',                                                      fr: '**Effectif :**' },
+
+  pleaseProvideContractId:     { en: 'Please provide a contract id.',                                       fr: 'Veuillez fournir un numéro de contrat.' },
+  pleaseProvideContractCancel: { en: 'Please provide a contract number to check cancellation eligibility.', fr: 'Veuillez fournir un numéro de contrat pour vérifier l\'admissibilité à l\'annulation.' },
+  pleaseProvideProgramMarkup:  { en: 'Please provide a program ID or program name to check the maximum markup.', fr: 'Veuillez fournir un ID ou un nom de programme pour vérifier la marge maximale.' },
+  pleaseProvideDealerEligib:   { en: 'Please provide a dealer code or dealer name to check eligibility.',   fr: 'Veuillez fournir un code ou un nom de marchand pour vérifier l\'admissibilité.' },
+  pleaseProvideDealerActiv:    { en: 'Please provide a dealer code to activate the program.',              fr: 'Veuillez fournir un code de marchand pour activer le programme.' },
+  pleaseProvideProgramActiv:   { en: 'Please provide a program ID (e.g., AU220, DW100) to activate.',      fr: 'Veuillez fournir un ID de programme (ex. : AU220, DW100) à activer.' },
+  pleaseProvideDealerDeact:    { en: 'Please provide a dealer code to deactivate the program.',            fr: 'Veuillez fournir un code de marchand pour désactiver le programme.' },
+  pleaseProvideProgramDeact:   { en: 'Please provide a program ID (e.g., AU220, DW100) to deactivate.',    fr: 'Veuillez fournir un ID de programme (ex. : AU220, DW100) à désactiver.' },
+  pleaseProvideExpiryFmt:      { en: 'Please provide the expiry date in YYYY-MM-DD format (e.g., 2026-07-01).', fr: 'Veuillez fournir la date d\'expiration au format AAAA-MM-JJ (ex. : 2026-07-01).' },
+  pleaseProvideMoreDetails:    { en: 'Please provide more details.',                                        fr: 'Veuillez fournir plus de détails.' },
+  couldNotProcess:             { en: 'Sorry, I could not process that request.',                            fr: 'Désolé, je n\'ai pas pu traiter cette demande.' },
+  couldNotUnderstand:          { en: 'I could not understand that request.',                                fr: 'Je n\'ai pas pu comprendre cette demande.' },
+
+  noDealersFound:              { en: 'No dealers found matching',                                           fr: 'Aucun marchand trouvé pour' },
+  foundDealer:                 { en: 'Found dealer',                                                        fr: 'Marchand trouvé :' },
+  foundDealers:                { en: 'Found',                                                               fr: 'Trouvé' },
+  dealersMatching:             { en: 'dealer(s) matching',                                                  fr: 'marchand(s) correspondant à' },
+
+  aboutToDeactivateProg:       { en: 'You are about to deactivate program',                                 fr: 'Vous êtes sur le point de désactiver le programme' },
+  aboutToDeactivate:           { en: 'You are about to deactivate',                                         fr: 'Vous êtes sur le point de désactiver' },
+  forDealer:                   { en: 'for dealer',                                                          fr: 'pour le marchand' },
+  expiryTodayOrFuture:         { en: 'Would you like the expiry to be effective today or on a future date?', fr: 'Souhaitez-vous que l\'expiration soit effective aujourd\'hui ou à une date future ?' },
+
+  labelToday:                  { en: 'Today',                                                               fr: 'Aujourd\'hui' },
+  labelFutureDate:             { en: 'Future Date',                                                         fr: 'Date future' },
+  labelDeactivate:             { en: 'Deactivate',                                                          fr: 'Désactiver' },
+  labelActivateProduct:        { en: 'Activate Product',                                                    fr: 'Activer le produit' },
+  labelViewDealerDetails:      { en: 'View Dealer',                                                         fr: 'Voir le marchand' },
+
+  contractIsCurrently:         { en: 'is currently',                                                        fr: 'est actuellement' },
+  owner:                       { en: 'Owner',                                                               fr: 'Propriétaire' },
+  product:                     { en: 'Product',                                                             fr: 'Produit' },
+  effectiveDate:               { en: 'Effective date',                                                      fr: 'Date d\'entrée en vigueur' },
+  lastUpdated:                 { en: 'Last updated',                                                        fr: 'Dernière mise à jour' },
+  source:                      { en: 'Source',                                                              fr: 'Source' },
+  contractWord:                { en: 'Contract',                                                            fr: 'Contrat' },
+} as const;
+
+function t(key: keyof typeof translations, lang: Lang = currentLanguage): string {
+  return translations[key][lang];
+}
+
+function languageName(lang: Lang): string {
+  return lang === 'fr' ? 'French' : 'English';
+}
+// ---------- End language helpers ----------
+
 async function chatWithOllama(messages: OllamaMessage[]): Promise<string> {
   const response = await fetch(`${OLLAMA_API_BASE_URL}/api/chat`, {
     method: 'POST',
@@ -508,167 +745,285 @@ async function chatWithOllama(messages: OllamaMessage[]): Promise<string> {
   return content;
 }
 
-async function askOllamaForToolCall(content: string): Promise<AgentToolCall> {
-  const modelResponse = await chatWithOllama([
+// ---------- Two-stage LLM routing ----------
+// Stage 1: a small focused prompt asks the local LLM to emit ONLY the tool name.
+// Stage 2: a per-tool prompt asks the LLM to extract just the entities that
+// tool needs. Splitting the work keeps each prompt short and reliable on
+// tiny local models (e.g. llama3.2:3b) without resorting to brittle regex.
+
+type RoutableTool = Exclude<AgentToolCall['tool'], 'none'>;
+
+const ROUTABLE_TOOLS: readonly RoutableTool[] = [
+  'checkEligibility',
+  'checkCancellation',
+  'getContractStatus',
+  'getMaxMarkup',
+  'activateProgram',
+  'deactivateProgram',
+  'searchDealer',
+  'generalChat',
+];
+
+async function classifyTool(content: string): Promise<RoutableTool> {
+  const response = await chatWithOllama([
     {
       role: 'system',
-      content: `You are an intent classifier and entity extractor for a BackOffice dealer management system.
-Analyze the user message and return ONLY a JSON object (no markdown, no explanation).
+      content: `You are the router for the BackOffice dealer-management API.
+Pick the SINGLE best tool to handle the user's message.
 
-ENTITY DEFINITIONS:
-- dealerId: A dealer code like "AB006624", "BC001234" (2 letters + 4-6 digits)
-- dealerName: A business name like "Alberta Jeep", "Pacific Auto Group"
-- productId: ONLY these exact abbreviations: "EW", "DW", "GAP", "RW", "PPM", "TR". Nothing else is a productId.
-- productName: A full product name that matches: "Extended Warranty", "Dealer Warranty", "GAP Premium", "Replacement Warranty", "Pre-Paid Maintenance", "Tire & Rim"
-- programId: An alphanumeric code with letters+digits like "AU220", "DW100", "GP001", "TR001", "RW100"
-- programName: Any descriptive name that is NOT a known productName and NOT a known productId. Examples: "Retail Wearable Parts", "Extended Warranty Premium", "Dealer Warranty Plus"
+TOOLS (return exactly one of these names):
+- checkEligibility — User asks if a DEALER CAN SELL a product/program, or IS ELIGIBLE / ENROLLED for one. Triggers: "can X sell Y", "is X eligible for Y", "is X enrolled in Y".
+- checkCancellation — User asks whether a CONTRACT can be cancelled. Triggers: "cancel contract Z", "is contract Z eligible for cancellation", "can I cancel Z".
+- getContractStatus — User asks the STATUS of a CONTRACT. Triggers: "status of contract Z", "what is the state of contract Z".
+- getMaxMarkup — User asks the MAXIMUM MARKUP of a program. Triggers: "max markup on Y", "what is the markup for Y".
+- activateProgram — User wants to ACTIVATE / SET UP a program for a dealer. Triggers: "activate Y for X", "set up Y for X".
+- deactivateProgram — User wants to DEACTIVATE / EXPIRE / DISABLE a program for a dealer. Triggers: "deactivate Y for X", "expire Y for X".
+- searchDealer — User wants to FIND / LIST / SHOW / SEARCH dealers WITHOUT asking about products or eligibility. Triggers: "find dealer X", "list dealers in BC", "show me Pacific Auto".
+- generalChat — Greetings, small talk, or any other request not handled above.
 
-TOOLS:
-1. checkEligibility - When user asks if a dealer can sell/is eligible for a product or program.
-   Return: {"tool":"checkEligibility","arguments":{...extracted entities...}}
-
-2. getContractStatus - When user asks about the status of a specific contract.
-   Return: {"tool":"getContractStatus","arguments":{"contractId":"THE_ID"}}
-
-3. checkCancellation - When user asks if a contract is eligible for cancellation or can be cancelled.
-   Return: {"tool":"checkCancellation","arguments":{"contractId":"CONTRACT_NUMBER"}}
-
-4. activateProgram - When user wants to activate/enable/set up a program for a dealer.
-   Return: {"tool":"activateProgram","arguments":{"dealerId":"DEALER","programId":"PROGRAM","effectiveDate":"YYYY-MM-DD or omit for today"}}
-
-5. deactivateProgram - When user wants to deactivate/disable/expire/cancel a program for a dealer.
-   Return: {"tool":"deactivateProgram","arguments":{"dealerId":"DEALER","programId":"PROGRAM","expiryDate":"YYYY-MM-DD or omit to ask"}}
-
-6. getMaxMarkup - When user asks about the maximum markup for a program.
-   Return: {"tool":"getMaxMarkup","arguments":{"programId":"PROGRAM_CODE"}} or {"tool":"getMaxMarkup","arguments":{"programName":"PROGRAM_NAME"}}
-
-7. searchDealer - When user asks to find, list, search, look up, or show dealer(s). Extract whatever search text they provide (name, code, city, province).
-   Return: {"tool":"searchDealer","arguments":{"searchQuery":"THE_SEARCH_TEXT"}}
-
-8. generalChat - For general questions unrelated to eligibility or contracts.
-   Return: {"tool":"generalChat"}
-
-9. none - When you cannot determine intent or need more info.
-   Return: {"tool":"none","answer":"your clarifying question"}
+CRITICAL ROUTING RULES (apply BEFORE anything else):
+1. If the message uses "sell", "eligible", "eligibility", or "enrolled" AND mentions both a dealer and a product/program → checkEligibility. NEVER searchDealer.
+2. "cancel" / "cancellation" referring to a CONTRACT → checkCancellation. NEVER checkEligibility.
+3. The user may write in English or French. Classify regardless of language.
 
 EXAMPLES:
-User: "can AB006624 sell EW Retail Wearable Parts"
-→ {"tool":"checkEligibility","arguments":{"dealerId":"AB006624","productId":"EW","programName":"Retail Wearable Parts"}}
+"Can Eagle Ridge Chevrolet Buick GMC Ltd sell AU220" → checkEligibility
+"Is BC006642 eligible for Extended Warranty"         → checkEligibility
+"Est-ce que AB006621 peut vendre AU220 ?"            → checkEligibility
+"What is the status of contract AUMU02522380"        → getContractStatus
+"Can I cancel contract EW12345"                       → checkCancellation
+"Max markup on AU220"                                 → getMaxMarkup
+"Activate AU220 for AB006621"                         → activateProgram
+"Deactivate AU220 for AB006621"                       → deactivateProgram
+"List dealers in BC"                                  → searchDealer
+"Find Pacific Auto"                                   → searchDealer
+"Hello"                                               → generalChat
 
-User: "can AB006621 sell Retail Wearable Parts"
-→ {"tool":"checkEligibility","arguments":{"dealerId":"AB006621","programName":"Retail Wearable Parts"}}
-
-User: "Can Alberta Jeep sell AU220"
-→ {"tool":"checkEligibility","arguments":{"dealerName":"Alberta Jeep","programId":"AU220"}}
-
-User: "is BC006642 eligible for Extended Warranty"
-→ {"tool":"checkEligibility","arguments":{"dealerId":"BC006642","productName":"Extended Warranty"}}
-
-User: "can ON008800 sell GAP Premium under GP001"
-→ {"tool":"checkEligibility","arguments":{"dealerId":"ON008800","productName":"GAP Premium","programId":"GP001"}}
-
-User: "what is the status of contract AUMU02522380"
-→ {"tool":"getContractStatus","arguments":{"contractId":"AUMU02522380"}}
-
-User: "hello"
-→ {"tool":"generalChat"}
-
-User: "activate AU220 for AB006621"
-→ {"tool":"activateProgram","arguments":{"dealerId":"AB006621","programId":"AU220"}}
-
-User: "deactivate AU220 for AB006621 on 2026-07-01"
-→ {"tool":"deactivateProgram","arguments":{"dealerId":"AB006621","programId":"AU220","expiryDate":"2026-07-01"}}
-
-User: "deactivate AU220 for AB006621"
-→ {"tool":"deactivateProgram","arguments":{"dealerId":"AB006621","programId":"AU220"}}
-
-User: "set up DW100 for BC006642"
-→ {"tool":"activateProgram","arguments":{"dealerId":"BC006642","programId":"DW100"}}
-
-User: "expire GP001 for ON008800 today"
-→ {"tool":"deactivateProgram","arguments":{"dealerId":"ON008800","programId":"GP001","expiryDate":"${new Date().toISOString().split('T')[0]}"}}
-
-User: "Is contract AUMU02522381 eligible for cancellation?"
-→ {"tool":"checkCancellation","arguments":{"contractId":"AUMU02522381"}}
-
-User: "can I cancel contract EW12345"
-→ {"tool":"checkCancellation","arguments":{"contractId":"EW12345"}}
-
-User: "check cancellation eligibility for DW99887"
-→ {"tool":"checkCancellation","arguments":{"contractId":"DW99887"}}
-
-User: "what's the maximum markup on AU220"
-→ {"tool":"getMaxMarkup","arguments":{"programId":"AU220"}}
-
-User: "max markup for Retail Wearable Parts"
-→ {"tool":"getMaxMarkup","arguments":{"programName":"Retail Wearable Parts"}}
-
-User: "what is the max markup on DW100"
-→ {"tool":"getMaxMarkup","arguments":{"programId":"DW100"}}
-
-User: "find dealer AB006624"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"AB006624"}}
-
-User: "list dealers in Alberta"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"Alberta"}}
-
-User: "search for Pacific Auto"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"Pacific Auto"}}
-
-User: "show me dealers in BC"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"BC"}}
-
-User: "look up dealer Ontario Jeep"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"Ontario Jeep"}}
-
-User: "list ab dealers"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"AB"}}
-
-User: "dealer list by AB"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"AB"}}
-
-User: "list active dealers in Alberta"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"Alberta"}}
-
-User: "show all ON dealers"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"ON"}}
-
-User: "dealers in Toronto"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"Toronto"}}
-
-User: "who are the dealers in Quebec"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"Quebec"}}
-
-User: "get me a list of BC dealers"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"BC"}}
-
-User: "dealer search Calgary"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"Calgary"}}
-
-User: "find all dealers"
-→ {"tool":"searchDealer","arguments":{"searchQuery":""}}
-
-User: "show dealer AB006621"
-→ {"tool":"searchDealer","arguments":{"searchQuery":"AB006621"}}
-
-RULES:
-- CRITICAL: "eligible for cancellation", "can be cancelled", "cancel contract" → ALWAYS use checkCancellation, NEVER checkEligibility. The word "cancellation" or "cancel" in the context of a CONTRACT means checkCancellation.
-- checkEligibility is ONLY for dealers selling products/programs. It always involves a DEALER.
-- checkCancellation is for contracts being cancelled. It always involves a CONTRACT NUMBER.
-- Only include fields you can extract from the message. Omit fields that are empty or not mentioned.
-- productId is ONLY one of: EW, DW, GAP, RW, PPM, TR. Do NOT infer or abbreviate words into these codes. If the user did not type one of these exact codes, do NOT set productId.
-- A code with letters+digits like AU220, DW100 is a programId, NOT a productId.
-- If the text after "sell" is a multi-word phrase that is NOT a known product name, treat the entire phrase as programName.
-- Do NOT guess or infer productId from words. "Retail" does NOT mean "RW". Only use productId if the user literally typed EW, DW, GAP, RW, PPM, or TR.
-- CRITICAL for searchDealer: Any message about finding, listing, searching, showing, looking up, or getting dealers → ALWAYS use searchDealer. This includes "list X dealers", "dealer list", "dealers in X", "X dealers", "show dealer X", "get dealers", "who are the dealers". Extract the meaningful search text (city, province code, name, dealer code prefix) as searchQuery. Strip filler words like "list", "find", "show", "active", "all", "dealers", "dealer", "me", "the", "in", "by", "get".
-- If the message mentions "dealer" combined with "list", "find", "search", "show", "look up", "get", or asks "who" about dealers → ALWAYS searchDealer, NEVER generalChat.
-- Return ONLY the JSON object, nothing else.`,
+Respond with ONLY the tool name on a single line. No JSON, no quotes, no explanation.`,
     },
     { role: 'user', content },
   ]);
 
-  return normalizeToolCall(extractJsonObject(modelResponse));
+  // Strict match first (alphanumeric only, case-insensitive).
+  const stripped = response.trim().toLowerCase().replace(/[^a-z]/g, '');
+  const exact = ROUTABLE_TOOLS.find(name => name.toLowerCase() === stripped);
+  if (exact) return exact;
+  // Loose match: pick the first known tool name that appears in the response.
+  const lower = response.toLowerCase();
+  const loose = ROUTABLE_TOOLS.find(name => lower.includes(name.toLowerCase()));
+  if (loose) return loose;
+  return 'generalChat';
 }
+
+const EXTRACTOR_PROMPTS: Record<Exclude<RoutableTool, 'generalChat'>, string> = {
+  checkEligibility: `Extract entities from a dealer-product eligibility question. Return ONLY a JSON object. Include only the fields present in the message; omit anything not stated.
+
+FIELDS:
+- dealerId: dealer code like "AB006624", "BC001234" (2 letters + 4-6 digits).
+- dealerName: business name like "Driveco Motors", "Eagle Ridge Chevrolet Buick GMC Ltd". Capture the WHOLE multi-word name between "Can" and "sell" / "is" and "eligible".
+- productId: ONLY if the user literally typed EW, DW, GAP, RW, PPM, or TR. Do NOT infer.
+- productName: full product name like "Extended Warranty", "GAP Premium", "Pre-Paid Maintenance".
+- programId: alphanumeric code with both letters AND digits like "AU220", "DW100", "GP001".
+- programName: any other descriptive name (e.g. "Retail Wearable Parts"). If the user wrote "EW Retail Wearable Parts", productId is "EW" and programName is "Retail Wearable Parts".
+
+RULES:
+- A code like AU220 / DW100 is a programId, NEVER a productId.
+- Do not invent fields. Empty/missing → omit the field.
+
+EXAMPLES:
+User: "Can Driveco Motors sell EW Retail Wearable Parts?"
+JSON: {"dealerName":"Driveco Motors","productId":"EW","programName":"Retail Wearable Parts"}
+
+User: "Can BC006642 sell EW Retail Wearable Parts?"
+JSON: {"dealerId":"BC006642","productId":"EW","programName":"Retail Wearable Parts"}
+
+User: "Can Eagle Ridge Chevrolet Buick GMC Ltd sell AU220"
+JSON: {"dealerName":"Eagle Ridge Chevrolet Buick GMC Ltd","programId":"AU220"}
+
+User: "is BC006642 eligible for Extended Warranty"
+JSON: {"dealerId":"BC006642","productName":"Extended Warranty"}
+
+User: "Est-ce que AB006621 peut vendre AU220 ?"
+JSON: {"dealerId":"AB006621","programId":"AU220"}
+
+User: "can ON008800 sell GAP Premium under GP001"
+JSON: {"dealerId":"ON008800","productName":"GAP Premium","programId":"GP001"}
+
+Return ONLY the JSON object, nothing else.`,
+
+  checkCancellation: `Extract the contract id for a cancellation eligibility check. Return ONLY: {"contractId":"..."}.
+
+EXAMPLES:
+User: "Is contract AUMU02522381 eligible for cancellation?"
+JSON: {"contractId":"AUMU02522381"}
+
+User: "can I cancel contract EW12345"
+JSON: {"contractId":"EW12345"}
+
+User: "check cancellation eligibility for DW99887"
+JSON: {"contractId":"DW99887"}
+
+Return ONLY the JSON.`,
+
+  getContractStatus: `Extract the contract id. Return ONLY: {"contractId":"..."}.
+
+EXAMPLES:
+User: "what is the status of contract AUMU02522380"
+JSON: {"contractId":"AUMU02522380"}
+
+User: "status of EW12345"
+JSON: {"contractId":"EW12345"}
+
+Return ONLY the JSON.`,
+
+  getMaxMarkup: `Extract program identity for a max-markup lookup. Return ONLY: {"programId":?,"programName":?}. Use programId for alphanumeric codes (e.g. AU220, DW100); otherwise programName. Omit the unused field.
+
+EXAMPLES:
+User: "what's the maximum markup on AU220"
+JSON: {"programId":"AU220"}
+
+User: "max markup for Retail Wearable Parts"
+JSON: {"programName":"Retail Wearable Parts"}
+
+User: "what is the max markup on DW100"
+JSON: {"programId":"DW100"}
+
+Return ONLY the JSON.`,
+
+  activateProgram: `Extract activation arguments. Return ONLY: {"dealerId":?,"programId":?,"effectiveDate":?}. dealerId is the dealer code (XX######). programId is an alphanumeric code (e.g. AU220). effectiveDate format YYYY-MM-DD; omit if not provided.
+
+EXAMPLES:
+User: "activate AU220 for AB006621"
+JSON: {"dealerId":"AB006621","programId":"AU220"}
+
+User: "set up DW100 for BC006642"
+JSON: {"dealerId":"BC006642","programId":"DW100"}
+
+Return ONLY the JSON.`,
+
+  deactivateProgram: `Extract deactivation arguments. Return ONLY: {"dealerId":?,"programId":?,"expiryDate":?}. Same formats as activate; omit expiryDate if the user did not give one.
+
+EXAMPLES:
+User: "deactivate AU220 for AB006621 on 2026-07-01"
+JSON: {"dealerId":"AB006621","programId":"AU220","expiryDate":"2026-07-01"}
+
+User: "deactivate AU220 for AB006621"
+JSON: {"dealerId":"AB006621","programId":"AU220"}
+
+User: "expire GP001 for ON008800 today"
+JSON: {"dealerId":"ON008800","programId":"GP001","expiryDate":"${new Date().toISOString().split('T')[0]}"}
+
+Return ONLY the JSON.`,
+
+  searchDealer: `Extract the search term. Return ONLY: {"searchQuery":"..."}. The query may be a dealer code (AB006624), a province code (AB, BC, ON, QC), a city, or a business name. Strip filler words like "find", "list", "show", "dealers", "active", "all", "the", "in", "by", "get", "me", "who". If the user wants ALL dealers, use an empty string.
+
+EXAMPLES:
+User: "find dealer AB006624"
+JSON: {"searchQuery":"AB006624"}
+
+User: "list dealers in Alberta"
+JSON: {"searchQuery":"Alberta"}
+
+User: "show all ON dealers"
+JSON: {"searchQuery":"ON"}
+
+User: "search Pacific Auto"
+JSON: {"searchQuery":"Pacific Auto"}
+
+User: "find all dealers"
+JSON: {"searchQuery":""}
+
+Return ONLY the JSON.`,
+};
+
+async function extractArgsForTool(tool: RoutableTool, content: string): Promise<AgentToolCall> {
+  if (tool === 'generalChat') return { tool: 'generalChat' };
+
+  let parsedArgs: unknown = {};
+  try {
+    const response = await chatWithOllama([
+      { role: 'system', content: EXTRACTOR_PROMPTS[tool] },
+      { role: 'user', content },
+    ]);
+    parsedArgs = extractJsonObject(response);
+  } catch {
+    // If extraction fails, return the tool with no args — downstream code
+    // will prompt the user for missing pieces.
+    parsedArgs = {};
+  }
+
+  // Reuse the existing normalizer to coerce field types, then force the
+  // routed tool (the normalizer only inspects the `tool` key we pass in,
+  // but we want to be explicit that stage 1 decides routing).
+  const normalized = normalizeToolCall({ tool, arguments: parsedArgs });
+  normalized.tool = tool;
+
+  // Regex backstop: small local models occasionally emit empty {} for the
+  // eligibility extractor on longer sentences ("Can Driveco Motors sell EW
+  // Retail Wearable Parts?"). If the LLM gave us nothing useful, recover
+  // what we can from the raw text WITHOUT changing the routed tool.
+  if (tool === 'checkEligibility'
+      && !normalized.arguments?.dealerId
+      && !normalized.arguments?.dealerName) {
+    const regex = detectEligibilityIntent(content);
+    if (regex && regex.tool === 'checkEligibility' && regex.arguments) {
+      normalized.arguments = {
+        ...regex.arguments,
+        ...normalized.arguments,
+        // Prefer regex-extracted dealer if LLM missed it
+        dealerId: normalized.arguments?.dealerId ?? regex.arguments.dealerId,
+        dealerName: normalized.arguments?.dealerName ?? regex.arguments.dealerName,
+        productId: normalized.arguments?.productId ?? regex.arguments.productId,
+        programId: normalized.arguments?.programId ?? regex.arguments.programId,
+        programName: normalized.arguments?.programName ?? regex.arguments.programName,
+      };
+    }
+  }
+
+  // Anti-hallucination guard: strip productId when the user didn't literally
+  // type a known product code. The extractor prompt forbids inference, but
+  // small local models still sometimes invent one (e.g. emitting "DW" for
+  // "Can BC006642 sell Retail Wearable Parts?"). Match as a whole word so
+  // "DW" inside a longer token doesn't count.
+  if (normalized.arguments?.productId) {
+    const claimed = normalized.arguments.productId.trim().toUpperCase();
+    const KNOWN_PRODUCT_CODES = ['EW', 'DW', 'GAP', 'RW', 'PPM', 'TR'];
+    // Whole-word, case-insensitive check WITHOUT building a regex from
+    // untrusted input. Scan the uppercased message for the literal code
+    // bounded by non-alphanumeric characters.
+    const upperContent = content.toUpperCase();
+    let appearsLiterally = false;
+    if (KNOWN_PRODUCT_CODES.includes(claimed)) {
+      let idx = upperContent.indexOf(claimed);
+      while (idx !== -1) {
+        const before = idx === 0 ? ' ' : upperContent[idx - 1];
+        const after = idx + claimed.length >= upperContent.length
+          ? ' '
+          : upperContent[idx + claimed.length];
+        const isBoundary = (c: string) => !/[A-Z0-9]/.test(c);
+        if (isBoundary(before) && isBoundary(after)) {
+          appearsLiterally = true;
+          break;
+        }
+        idx = upperContent.indexOf(claimed, idx + 1);
+      }
+    }
+    if (!appearsLiterally) {
+      console.log('[extractArgsForTool] stripping hallucinated productId=%o (not literally in message)', claimed);
+      const { productId: _stripped, ...rest } = normalized.arguments;
+      void _stripped;
+      normalized.arguments = rest;
+    }
+  }
+
+  return normalized;
+}
+
+async function askOllamaForToolCall(content: string): Promise<AgentToolCall> {
+  const tool = await classifyTool(content);
+  return extractArgsForTool(tool, content);
+}
+// ---------- End two-stage LLM routing ----------
 
 async function searchDealers(query: string): Promise<DealerSearchResult[]> {
   const response = await authorizedFetch(
@@ -681,6 +1036,21 @@ async function searchDealers(query: string): Promise<DealerSearchResult[]> {
   }
 
   return await response.json() as DealerSearchResult[];
+}
+
+async function searchPrograms(query: string): Promise<ProgramLookupResult[]> {
+  const q = (query ?? '').trim();
+  if (!q) return [];
+  const response = await authorizedFetch(
+    `${API_BASE_URL}/api/programs/search?q=${encodeURIComponent(q)}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Program Search Error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json() as ProgramLookupResult[];
 }
 
 async function getDealersPaged(params: DealerPagedParams = {}): Promise<DealerPagedResult> {
@@ -804,9 +1174,20 @@ async function getContractStatus(contractId: string): Promise<ContractStatus> {
   return await response.json() as ContractStatus;
 }
 
-async function checkCancellationEligibility(contractId: string): Promise<CancellationEligibilityResult> {
+async function checkCancellationEligibility(
+  contractId: string,
+  params: CancellationEligibilityParams = {},
+): Promise<CancellationEligibilityResult> {
+  const search = new URLSearchParams();
+  if (params.cancDt) search.set('cancDt', params.cancDt);
+  if (params.ruleId) search.set('ruleId', params.ruleId);
+  if (params.cancType) search.set('cancType', params.cancType);
+  if (params.lang) search.set('lang', params.lang);
+  if (params.userId) search.set('userId', params.userId);
+  const qs = search.toString();
+
   const response = await authorizedFetch(
-    `${CONTRACT_API_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/cancellation-eligibility`
+    `${CONTRACT_API_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/cancellation-eligibility${qs ? `?${qs}` : ''}`
   );
 
   if (!response.ok) {
@@ -819,14 +1200,17 @@ async function checkCancellationEligibility(contractId: string): Promise<Cancell
 
 function formatCancellationResult(result: CancellationEligibilityResult): string {
   if (result.isEligible) {
+    const refundDisplay = result.refundAmount != null
+      ? `${result.refundType} ($${result.refundAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+      : result.refundType;
     const lines = [
-      `✅ **Yes — Eligible for Cancellation**`,
+      t('cancelEligibleHeader'),
       ``,
-      `**Contract:** ${result.contractNumber}`,
-      `**Status:** ${result.status}`,
-      `**Product:** ${result.product}`,
-      `**Effective:** ${result.effectiveDate} — **Expiry:** ${result.expiryDate}`,
-      `**Refund:** ${result.refundType}${result.refundAmount ? ` (${result.refundAmount}%)` : ''}`,
+      `${t('fieldContract')} ${result.contractNumber}`,
+      `${t('fieldStatus')} ${result.status}`,
+      `${t('fieldProduct')} ${result.product}`,
+      `${t('fieldEffectiveExpiry')} ${result.effectiveDate} — ${t('fieldExpiry')} ${result.expiryDate}`,
+      `${t('fieldRefund')} ${refundDisplay}`,
       ``,
       result.reason,
     ];
@@ -834,11 +1218,11 @@ function formatCancellationResult(result: CancellationEligibilityResult): string
   }
 
   return [
-    `❌ **No — Not Eligible for Cancellation**`,
+    t('cancelNotEligibleHeader'),
     ``,
-    `**Contract:** ${result.contractNumber}`,
-    `**Status:** ${result.status}`,
-    `**Reason:** ${result.reason}`,
+    `${t('fieldContract')} ${result.contractNumber}`,
+    `${t('fieldStatus')} ${result.status}`,
+    `${t('fieldReason')} ${result.reason}`,
   ].join('\n');
 }
 
@@ -865,38 +1249,38 @@ async function getMaxMarkup(programIdOrName: string): Promise<MaxMarkupResult> {
 
 function formatMaxMarkupResult(result: MaxMarkupResult): string {
   if (!result.found) {
-    return `❌ **Program Not Found**\n\n${result.summary}`;
+    return `${t('programNotFound')}\n\n${result.summary}`;
   }
 
   if (result.maxMarkup === 0 && result.summary.includes('No markup records')) {
     return [
-      `⚠️ **No Markup Data**`,
+      t('noMarkupData'),
       ``,
-      `**Program:** ${result.programId} (${result.programName})`,
-      `**Result:** No markup records found for this program.`,
+      `${t('fieldProgram')} ${result.programId} (${result.programName})`,
+      t('noMarkupRecords'),
     ].join('\n');
   }
 
   return [
-    `✅ **Maximum Markup**`,
+    t('maxMarkupHeader'),
     ``,
-    `**Program:** ${result.programId} (${result.programName})`,
-    `**Max Markup:** ${result.maxMarkup.toFixed(2)}`,
+    `${t('fieldProgram')} ${result.programId} (${result.programName})`,
+    `${t('fieldMaxMarkup')} ${result.maxMarkup.toFixed(2)}`,
   ].join('\n');
 }
 
 function formatContractStatus(status: ContractStatus): string {
   return [
-    `Contract ${status.contractId} is currently ${status.status}.`,
-    `Owner: ${status.owner}.`,
-    `Product: ${status.product}.`,
-    `Effective date: ${status.effectiveDate}.`,
-    `Last updated: ${new Date(status.lastUpdated).toLocaleString()}.`,
-    `Source: ${status.source}.`,
+    `${t('contractWord')} ${status.contractId} ${t('contractIsCurrently')} ${status.status}.`,
+    `${t('owner')}: ${status.owner}.`,
+    `${t('product')}: ${status.product}.`,
+    `${t('effectiveDate')}: ${status.effectiveDate}.`,
+    `${t('lastUpdated')}: ${new Date(status.lastUpdated).toLocaleString()}.`,
+    `${t('source')}: ${status.source}.`,
   ].join('\n');
 }
 
-async function checkEligibility(args: AgentToolCall['arguments']): Promise<EligibilityResult> {
+async function fetchEligibility(args: AgentToolCall['arguments']): Promise<EligibilityResult> {
   const params = new URLSearchParams();
   if (args?.dealerId) params.set('dealerId', args.dealerId);
   if (args?.dealerName) params.set('dealerName', args.dealerName);
@@ -917,20 +1301,171 @@ async function checkEligibility(args: AgentToolCall['arguments']): Promise<Eligi
   return await response.json() as EligibilityResult;
 }
 
-async function activateProgram(dealerId: string, programId: string, effectiveDate?: string): Promise<ProgramActionResult> {
+async function checkEligibility(
+  args: AgentToolCall['arguments']
+): Promise<EligibilityResult & { resolvedProgramId?: string; resolvedProgramName?: string }> {
+  // When only a dealer NAME is given, resolve it to a dealer CODE first via
+  // /api/dealers/search. Calling /api/eligibility with a dealer name can
+  // return inconsistent results compared to calling it with the dealer code
+  // (the name-lookup path on the backend behaves differently — e.g.
+  // "Driveco Motors" returns "not activated" while BC006642 returns "Eligible"
+  // for the same dealer). Resolving here guarantees the same answer in both
+  // forms.
+  const resolved: AgentToolCall['arguments'] = { ...args };
+  if (!resolved?.dealerId && resolved?.dealerName) {
+    try {
+      const matches = await searchDealers(resolved.dealerName);
+      if (matches.length === 1) {
+        resolved.dealerId = matches[0].dealerId;
+        resolved.dealerName = matches[0].dbaName;
+      } else if (matches.length > 1) {
+        // Prefer an exact (case-insensitive) name match if one exists.
+        const needle = resolved.dealerName.trim().toLowerCase();
+        const exact = matches.find(m => m.dbaName?.toLowerCase() === needle);
+        if (exact) {
+          resolved.dealerId = exact.dealerId;
+          resolved.dealerName = exact.dbaName;
+        }
+        // Otherwise leave dealerName as-is and let the backend pick.
+      }
+    } catch {
+      // If dealer search fails, fall through with the name only.
+    }
+  }
+
+  // Look up the program via /api/programs/search whenever we have a
+  // program reference but no concrete programId. This serves two purposes:
+  //   1. When neither productId nor productName is set, it resolves which
+  //      product owns the program (the backend's eligibility endpoint can
+  //      otherwise pick the wrong product when a program name is ambiguous,
+  //      e.g. "Retail Wearable Parts").
+  //   2. When productId IS known (e.g. extractor parsed "EW Retail Wearable
+  //      Parts" → productId="EW", programName="Retail Wearable Parts"), we
+  //      still need the actual programId so downstream activate / deactivate
+  //      flows POST a real program code instead of the product code.
+  //
+  // Strategy:
+  //   - 1 unique candidate productId → set it and call eligibility once.
+  //   - N unique candidate productIds → probe eligibility for each; return
+  //     the first Eligible response (matches the dealer's actual enrollment).
+  //     If none are eligible, return the last response so the caller still
+  //     gets a coherent "not activated" message.
+  if (resolved
+      && (resolved.programName || resolved.programId)
+      && !(resolved.productId && resolved.programId)) {
+    const lookup = (resolved.programId ?? resolved.programName)!.trim();
+    if (lookup) {
+      try {
+        let programs = await searchPrograms(lookup);
+        console.log('[checkEligibility] searchPrograms(%o) →', lookup, programs);
+        // If a product is already known, restrict candidates to that
+        // product so we don't accidentally jump to another product family.
+        if (resolved.productId) {
+          const knownProduct = resolved.productId.toLowerCase();
+          const before = programs.length;
+          programs = programs.filter(p => p.productId?.toLowerCase() === knownProduct);
+          console.log('[checkEligibility] filtered by productId=%o: %d → %d', resolved.productId, before, programs.length);
+        }
+        if (programs.length > 0) {
+          const needle = lookup.toLowerCase();
+          // Group candidates by unique productId, preserving sort order.
+          const byProduct = new Map<string, ProgramLookupResult>();
+          for (const p of programs) {
+            if (!p.productId) continue;
+            // Prefer an exact program-name/id match within each product group.
+            const existing = byProduct.get(p.productId);
+            const isExact = p.programName?.toLowerCase() === needle
+                          || p.programId?.toLowerCase() === needle;
+            const existingExact = existing
+              && (existing.programName?.toLowerCase() === needle
+                  || existing.programId?.toLowerCase() === needle);
+            if (!existing || (isExact && !existingExact)) {
+              byProduct.set(p.productId, p);
+            }
+          }
+          const candidates = Array.from(byProduct.values());
+
+          if (candidates.length === 1) {
+            const pick = candidates[0];
+            resolved.productId = pick.productId;
+            if (pick.programId) resolved.programId = pick.programId;
+            if (pick.programName) resolved.programName = pick.programName;
+          } else if (candidates.length > 1) {
+            // Probe each candidate productId. Return the first Eligible
+            // response, otherwise the final response.
+            let lastResult: EligibilityResult | null = null;
+            let lastProbe: AgentToolCall['arguments'] | null = null;
+            for (const pick of candidates) {
+              const probe: AgentToolCall['arguments'] = {
+                ...resolved,
+                productId: pick.productId,
+                programId: pick.programId || undefined,
+                programName: pick.programName || resolved.programName,
+              };
+              try {
+                const result = await fetchEligibility(probe);
+                lastResult = result;
+                lastProbe = probe;
+                if (result.isEligible) {
+                  return {
+                    ...result,
+                    resolvedProgramId: probe?.programId,
+                    resolvedProgramName: probe?.programName,
+                  };
+                }
+              } catch {
+                // Skip this candidate on error; continue probing.
+              }
+            }
+            if (lastResult) {
+              return {
+                ...lastResult,
+                resolvedProgramId: lastProbe?.programId,
+                resolvedProgramName: lastProbe?.programName,
+              };
+            }
+            // If every probe threw, fall through to single call below.
+          }
+        }
+      } catch {
+        // Fall through with the original program/product name.
+      }
+    }
+  }
+
+  const result = await fetchEligibility(resolved);
+  console.log('[checkEligibility] resolved args →', resolved, 'eligibility →', result);
+  return {
+    ...result,
+    resolvedProgramId: resolved?.programId,
+    resolvedProgramName: resolved?.programName,
+  };
+}
+
+async function activateProgram(
+  dealerId: string,
+  programId: string,
+  effectiveDate?: string,
+  productId?: string,
+): Promise<ProgramActionResult> {
   const response = await authorizedFetch(`${CONTRACT_API_BASE_URL}/api/eligibility/activate`, {
     method: 'POST',
-    body: JSON.stringify({ dealerId, programId, effectiveDate }),
+    body: JSON.stringify({ dealerId, productId, programId, effectiveDate }),
   });
 
   const result = await response.json() as ProgramActionResult;
   return result;
 }
 
-async function deactivateProgram(dealerId: string, programId: string, expiryDate: string): Promise<ProgramActionResult> {
+async function deactivateProgram(
+  dealerId: string,
+  programId: string,
+  expiryDate: string,
+  productId?: string,
+): Promise<ProgramActionResult> {
   const response = await authorizedFetch(`${CONTRACT_API_BASE_URL}/api/eligibility/deactivate`, {
     method: 'POST',
-    body: JSON.stringify({ dealerId, programId, expiryDate }),
+    body: JSON.stringify({ dealerId, productId, programId, expiryDate }),
   });
 
   const result = await response.json() as ProgramActionResult;
@@ -939,25 +1474,17 @@ async function deactivateProgram(dealerId: string, programId: string, expiryDate
 
 function formatEligibilityResult(result: EligibilityResult): string {
   if (result.isEligible) {
-    return `✅ Yes — Eligible`;
+    return t('yesEligible');
   }
 
-  let reason = 'Not set up for this product.';
-  if (result.summary.toLowerCase().includes('suspended')) {
-    reason = 'Dealer account is currently suspended.';
-  } else if (result.summary.toLowerCase().includes('inactive')) {
-    reason = 'Dealer account is inactive.';
-  } else if (result.summary.toLowerCase().includes('expired')) {
-    reason = 'Product enrollment has expired.';
-  } else if (result.summary.toLowerCase().includes('not found')) {
-    reason = 'Dealer was not found in the system.';
-  } else if (result.summary.toLowerCase().includes('discontinued')) {
-    reason = 'Program is discontinued.';
-  } else if (result.summary.toLowerCase().includes('not activated')) {
-    reason = 'Product is not activated for this dealer.';
-  }
-
-  return `❌ No — ${reason}`;
+  const s = result.summary.toLowerCase();
+  if (s.includes('suspended')) return t('noEligibleSuspended');
+  if (s.includes('inactive')) return t('noEligibleInactive');
+  if (s.includes('expired')) return t('noEligibleExpired');
+  if (s.includes('not found')) return t('noEligibleDealerNotFound');
+  if (s.includes('discontinued')) return t('noEligibleDiscontinued');
+  if (s.includes('not activated')) return t('noEligibleNotActivated');
+  return t('noEligibleNotSet');
 }
 
 function detectEligibilityIntent(content: string): AgentToolCall | null {
@@ -1049,11 +1576,12 @@ function detectEligibilityIntent(content: string): AgentToolCall | null {
 }
 
 async function answerGeneralChat(content: string): Promise<string> {
+  const lang = currentLanguage;
   return chatWithOllama([
     {
       role: 'system',
       content: `You are Team PnC, a concise BackOffice demo assistant.
-Answer simple general questions directly in English.
+Answer simple general questions directly in ${languageName(lang)}.
 The current date is ${new Date().toLocaleDateString()}.
 If the user asks about contract status, ask them for a contract id or tell them to use a question like: What is the status of contract AUMU02522380?
 Do not claim to access backend systems unless a tool result is provided.`,
@@ -1063,8 +1591,34 @@ Do not claim to access backend systems unless a tool result is provided.`,
 }
 
 let lastMeaningfulMessage = '';
-let lastEligibilityContext: { dealerCode: string; product: string } | null = null;
-let pendingDeactivation: { dealerCode: string; product: string } | null = null;
+// `product` is the product code (e.g. "EW"); `programId`/`programName`
+// carry the actual program (e.g. "EWXX001" / "Retail Wearable Parts") that
+// was resolved during the most recent eligibility check, so follow-up
+// activate / deactivate calls can post the correct programId to the API.
+let lastEligibilityContext: {
+  dealerCode: string;
+  product: string;
+  programId?: string;
+  programName?: string;
+} | null = null;
+let pendingDeactivation: {
+  dealerCode: string;
+  product: string;
+  programId?: string;
+  programName?: string;
+} | null = null;
+// When the most recent assistant message confirmed a contract is eligible
+// for cancellation, we stash the result here. A follow-up "yes" / "cancel"
+// from the user (typed or via the suggestion chip) then opens the
+// cancellation page in the main panel.
+let lastCancellationContext: CancellationEligibilityResult | null = null;
+
+/** Pick the best programId to send to the activate/deactivate endpoint. */
+function resolveProgramIdFromContext(
+  ctx: { product: string; programId?: string }
+): string {
+  return ctx.programId && ctx.programId.trim() ? ctx.programId : ctx.product;
+}
 
 function isRetryMessage(content: string): boolean {
   const lower = content.toLowerCase().trim();
@@ -1090,6 +1644,32 @@ function isExpiryResponse(content: string): { type: 'today' | 'future'; date?: s
     return { type: 'future' };
   }
   return null;
+}
+
+export interface DashboardMetrics {
+  dealers: number;
+  products: number;
+  programs: number;
+  contracts: number;
+  customers: number;
+  vehicles: number;
+}
+
+async function getCountFromEndpoint(endpoint: string): Promise<number> {
+  const result = await fetchApi<{ count: number }>(endpoint);
+  return result?.count ?? 0;
+}
+
+async function getUnifiDashboardMetrics(): Promise<DashboardMetrics> {
+  const [dealers, products, programs, contracts, customers, vehicles] = await Promise.all([
+    getCountFromEndpoint('/api/dashboard/active-dealers'),
+    getCountFromEndpoint('/api/dashboard/products'),
+    getCountFromEndpoint('/api/dashboard/active-programs'),
+    getCountFromEndpoint('/api/dashboard/active-contracts'),
+    getCountFromEndpoint('/api/dashboard/active-customers'),
+    getCountFromEndpoint('/api/dashboard/active-vehicles'),
+  ]);
+  return { dealers, products, programs, contracts, customers, vehicles };
 }
 
 // API methods
@@ -1123,7 +1703,61 @@ export const api = {
   getClaimsPaged: (params?: ClaimPagedParams) => getClaimsPaged(params),
   getClaimDetails: (claimNum: string) => getClaimDetails(claimNum),
 
+  // Cancellation calc / eligibility (calls DPP_DP612ContractCancel_Calc on the server)
+  getCancellationEligibility: (contractNum: string, params?: CancellationEligibilityParams) =>
+    checkCancellationEligibility(contractNum, params),
+
+  // Dashboard metrics (Unifi system)
+  getUnifiDashboardMetrics: () => getUnifiDashboardMetrics(),
+
+  // Clear conversational memory of the local Ollama agent (new chat).
+  resetLocalAgentState: () => {
+    lastMeaningfulMessage = '';
+    lastEligibilityContext = null;
+    pendingDeactivation = null;
+    lastCancellationContext = null;
+    currentLanguage = 'en';
+  },
+
   sendLocalAgentMessage: async (content: string): Promise<MessageDto> => {
+    // Detect language of THIS user message and stash it for downstream
+    // formatters and LLM prompts.
+    currentLanguage = detectLanguage(content);
+
+    // Handle pending cancellation confirmation: if the most recent assistant
+    // message confirmed the contract is eligible for cancellation and the
+    // user replies "yes" / "cancel" / "annuler", hand off to the host UI by
+    // attaching the cancellation result to the response. "no" / "not now"
+    // simply clears the pending context.
+    if (lastCancellationContext) {
+      const trimmed = content.trim();
+      if (/^(yes|y|cancel|cancel it|cancel contract|proceed|confirm|do it|go ahead|ok|okay|oui|annuler|annuler le contrat|continuer|confirmer)$/i.test(trimmed)) {
+        const ctx = lastCancellationContext;
+        lastCancellationContext = null;
+        return {
+          id: createId('local-assistant'),
+          conversationId: 'local-ollama-demo',
+          role: 'assistant',
+          content: t('cancelOpeningPage'),
+          timestamp: new Date().toISOString(),
+          cancellationResult: ctx,
+        };
+      }
+      if (/^(no|n|not now|cancel that|skip|nope|non|pas maintenant|annuler ça)$/i.test(trimmed)) {
+        lastCancellationContext = null;
+        return {
+          id: createId('local-assistant'),
+          conversationId: 'local-ollama-demo',
+          role: 'assistant',
+          content: t('cancelDeclined'),
+          timestamp: new Date().toISOString(),
+        };
+      }
+      // Any other message: drop the pending context and fall through to the
+      // normal routing flow.
+      lastCancellationContext = null;
+    }
+
     // Handle pending deactivation expiry response
     if (pendingDeactivation) {
       const expiryResponse = isExpiryResponse(content);
@@ -1144,14 +1778,14 @@ export const api = {
       if (expiryDate) {
         const ctx = pendingDeactivation;
         pendingDeactivation = null;
-        const result = await deactivateProgram(ctx.dealerCode, ctx.product, expiryDate);
+        const result = await deactivateProgram(ctx.dealerCode, resolveProgramIdFromContext(ctx), expiryDate, ctx.product);
         return {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
           content: result.success
-            ? `✅ **Deactivation Successful**\n\n**Dealer:** ${result.dealerCode} (${result.dealerName})\n**Program:** ${result.programId} (${result.programName})\n**Expiry Date:** ${result.effectiveDate}\n\n${result.summary}`
-            : `❌ **Deactivation Failed**\n\n${result.summary}`,
+            ? `${t('deactivationSuccess')}\n\n${t('fieldDealer')} ${result.dealerCode} (${result.dealerName})\n${t('fieldProgram')} ${result.programId} (${result.programName})\n${t('fieldExpiryDate')} ${result.effectiveDate}\n\n${result.summary}`
+            : `${t('deactivationFailed')}\n\n${result.summary}`,
           timestamp: new Date().toISOString(),
         };
       }
@@ -1162,7 +1796,7 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide the expiry date in YYYY-MM-DD format (e.g., 2026-07-01).',
+          content: t('pleaseProvideExpiryFmt'),
           timestamp: new Date().toISOString(),
         };
       }
@@ -1175,14 +1809,14 @@ export const api = {
     const deactivateWithDate = content.match(/deactivat(?:e|ion)\s+(?:at|on|for)\s+(\d{4}-\d{2}-\d{2})/i);
     if (deactivateWithDate && lastEligibilityContext) {
       const ctx = lastEligibilityContext;
-      const result = await deactivateProgram(ctx.dealerCode, ctx.product, deactivateWithDate[1]);
+      const result = await deactivateProgram(ctx.dealerCode, resolveProgramIdFromContext(ctx), deactivateWithDate[1], ctx.product);
       return {
         id: createId('local-assistant'),
         conversationId: 'local-ollama-demo',
         role: 'assistant',
         content: result.success
-          ? `✅ **Deactivation Successful**\n\n**Dealer:** ${result.dealerCode} (${result.dealerName})\n**Program:** ${result.programId} (${result.programName})\n**Expiry Date:** ${result.effectiveDate}\n\n${result.summary}`
-          : `❌ **Deactivation Failed**\n\n${result.summary}`,
+          ? `${t('deactivationSuccess')}\n\n${t('fieldDealer')} ${result.dealerCode} (${result.dealerName})\n${t('fieldProgram')} ${result.programId} (${result.programName})\n${t('fieldExpiryDate')} ${result.effectiveDate}\n\n${result.summary}`
+          : `${t('deactivationFailed')}\n\n${result.summary}`,
         timestamp: new Date().toISOString(),
       };
     }
@@ -1194,11 +1828,11 @@ export const api = {
         id: createId('local-assistant'),
         conversationId: 'local-ollama-demo',
         role: 'assistant',
-        content: `You are about to deactivate **${lastEligibilityContext.product}** for dealer **${lastEligibilityContext.dealerCode}**.\n\nWould you like the expiry to be effective today or on a future date?`,
+        content: `${t('aboutToDeactivate')} **${lastEligibilityContext.product}** ${t('forDealer')} **${lastEligibilityContext.dealerCode}**.\n\n${t('expiryTodayOrFuture')}`,
         timestamp: new Date().toISOString(),
         suggestions: [
-          { label: 'Today', action: 'today' },
-          { label: 'Future Date', action: 'future date' },
+          { label: t('labelToday'), action: 'today' },
+          { label: t('labelFutureDate'), action: 'future date' },
         ],
       };
     }
@@ -1206,15 +1840,19 @@ export const api = {
     // Handle activate action (button click or typed)
     if (/^(activate|active|yes.*activate|set up|setup)$/i.test(content.trim()) && lastEligibilityContext) {
       const ctx = lastEligibilityContext;
-      // ctx.product here might be a programId if last eligibility had programs
-      const result = await activateProgram(ctx.dealerCode, ctx.product);
+      // Prefer the resolved programId from the last eligibility check; fall
+      // back to the product code only if no program was resolved (some legacy
+      // contexts).
+      const programIdToUse = resolveProgramIdFromContext(ctx);
+      console.log('[activate] lastEligibilityContext →', ctx, 'programIdToUse →', programIdToUse);
+      const result = await activateProgram(ctx.dealerCode, programIdToUse, undefined, ctx.product);
       return {
         id: createId('local-assistant'),
         conversationId: 'local-ollama-demo',
         role: 'assistant',
         content: result.success
-          ? `✅ **Activation Successful**\n\n**Dealer:** ${result.dealerCode} (${result.dealerName})\n**Program:** ${result.programId} (${result.programName})\n**Effective:** ${result.effectiveDate}\n\n${result.summary}`
-          : `❌ **Activation Failed**\n\n${result.summary}`,
+          ? `${t('activationSuccess')}\n\n${t('fieldDealer')} ${result.dealerCode} (${result.dealerName})\n${t('fieldProgram')} ${result.programId} (${result.programName})\n${t('effective')} ${result.effectiveDate}\n\n${result.summary}`
+          : `${t('activationFailed')}\n\n${result.summary}`,
         timestamp: new Date().toISOString(),
       };
     }
@@ -1233,16 +1871,30 @@ export const api = {
     const followUpDealerMatch = effectiveContent.match(/\b([A-Z]{2}\d{4,6})\b/i);
     if (lastEligibilityContext && followUpDealerMatch && /^(what about|how about|and|check|same for|also)\b/i.test(effectiveContent.trim())) {
       const newDealerCode = followUpDealerMatch[1].toUpperCase();
-      const eligibility = await checkEligibility({ dealerId: newDealerCode, programId: lastEligibilityContext.product });
-      if (eligibility.isEligible) {
-        lastEligibilityContext = { dealerCode: eligibility.dealerCode, product: eligibility.product };
-      }
+      const eligibility = await checkEligibility({
+        dealerId: newDealerCode,
+        productId: lastEligibilityContext.product,
+        programId: lastEligibilityContext.programId,
+        programName: lastEligibilityContext.programName,
+      });
+      lastEligibilityContext = {
+        dealerCode: eligibility.dealerCode || newDealerCode,
+        product: eligibility.productId ?? eligibility.product ?? lastEligibilityContext.product,
+        programId: eligibility.programId
+          ?? eligibility.programs?.[0]?.code
+          ?? eligibility.resolvedProgramId
+          ?? lastEligibilityContext.programId,
+        programName: eligibility.programName
+          ?? eligibility.programs?.[0]?.name
+          ?? eligibility.resolvedProgramName
+          ?? lastEligibilityContext.programName,
+      };
       const dealerNotFound = eligibility.summary.toLowerCase().includes('not found');
       const suggestions: SuggestedAction[] = eligibility.isEligible
-        ? [{ label: 'Deactivate', action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` }]
+        ? [{ label: t('labelDeactivate'), action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` }]
         : (eligibility.dealerCode && !dealerNotFound)
-          ? [{ label: 'Activate Product', action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
-             { label: 'View Dealer Details', action: 'viewDealer', payload: eligibility.dealerCode }]
+          ? [{ label: t('labelActivateProduct'), action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
+             { label: t('labelViewDealerDetails'), action: 'viewDealer', payload: eligibility.dealerCode }]
           : [];
       return {
         id: createId('local-assistant'),
@@ -1255,35 +1907,45 @@ export const api = {
       };
     }
 
-    // Use AI to understand intent and extract entities; fall back to regex if LLM fails
+    // Use the local LLM (two-stage: classify tool, then extract entities) to
+    // decide which API to call. If the LLM is completely unreachable, fall
+    // back to a regex eligibility heuristic so the demo still answers.
     let toolCall: AgentToolCall;
     try {
       toolCall = await askOllamaForToolCall(effectiveContent);
     } catch {
-      toolCall = detectEligibilityIntent(effectiveContent) ?? { tool: 'none', answer: 'Sorry, I could not process that request.' };
+      toolCall = detectEligibilityIntent(effectiveContent) ?? { tool: 'none', answer: t('couldNotProcess') };
     }
 
-    // If LLM returned 'none' or 'generalChat' but regex detects a specific intent, use regex result
-    if (toolCall.tool === 'none' || toolCall.tool === 'generalChat' || (toolCall.tool === 'checkEligibility' && !toolCall.arguments?.dealerId && !toolCall.arguments?.dealerName)) {
-      const regexFallback = detectEligibilityIntent(effectiveContent);
-      if (regexFallback) {
-        toolCall = regexFallback;
-      }
-    }
-
-    // Additional follow-up: LLM couldn't parse but message has a dealer code and we have context
+    // Follow-up: a bare dealer code after a previous eligibility check should
+    // re-run that check for the new dealer, even if the LLM classified it as
+    // generalChat / none. This is the only conversational state we keep.
     if ((toolCall.tool === 'none' || toolCall.tool === 'generalChat') && lastEligibilityContext && followUpDealerMatch) {
       const newDealerCode = followUpDealerMatch[1].toUpperCase();
-      const eligibility = await checkEligibility({ dealerId: newDealerCode, programId: lastEligibilityContext.product });
-      if (eligibility.isEligible) {
-        lastEligibilityContext = { dealerCode: eligibility.dealerCode, product: eligibility.product };
-      }
+      const eligibility = await checkEligibility({
+        dealerId: newDealerCode,
+        productId: lastEligibilityContext.product,
+        programId: lastEligibilityContext.programId,
+        programName: lastEligibilityContext.programName,
+      });
+      lastEligibilityContext = {
+        dealerCode: eligibility.dealerCode || newDealerCode,
+        product: eligibility.productId ?? eligibility.product ?? lastEligibilityContext.product,
+        programId: eligibility.programId
+          ?? eligibility.programs?.[0]?.code
+          ?? eligibility.resolvedProgramId
+          ?? lastEligibilityContext.programId,
+        programName: eligibility.programName
+          ?? eligibility.programs?.[0]?.name
+          ?? eligibility.resolvedProgramName
+          ?? lastEligibilityContext.programName,
+      };
       const dealerNotFound = eligibility.summary.toLowerCase().includes('not found');
       const suggestions: SuggestedAction[] = eligibility.isEligible
-        ? [{ label: 'Deactivate', action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` }]
+        ? [{ label: t('labelDeactivate'), action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` }]
         : (eligibility.dealerCode && !dealerNotFound)
-          ? [{ label: 'Activate Product', action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
-             { label: 'View Dealer Details', action: 'viewDealer', payload: eligibility.dealerCode }]
+          ? [{ label: t('labelActivateProduct'), action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
+             { label: t('labelViewDealerDetails'), action: 'viewDealer', payload: eligibility.dealerCode }]
           : [];
       return {
         id: createId('local-assistant'),
@@ -1294,25 +1956,6 @@ export const api = {
         eligibilityResult: eligibility,
         suggestions: suggestions.length > 0 ? suggestions : undefined,
       };
-    }
-
-    // Second-pass AI check: if LLM missed a dealer search intent, ask again with a focused prompt
-    if ((toolCall.tool === 'none' || toolCall.tool === 'generalChat') && /dealer/i.test(effectiveContent)) {
-      try {
-        const secondPass = await chatWithOllama([
-          {
-            role: 'system',
-            content: `The user message is about dealers. Extract the search term they want to look up. Return ONLY a JSON object like: {"tool":"searchDealer","arguments":{"searchQuery":"THE_TERM"}}. The search term could be a dealer code (e.g. AB006624), a province code (AB, BC, ON, QC), a city name, or a dealer name. Strip filler words like "list", "find", "show", "dealers", "active", "in", "by", "all", "the". If the entire message is just about listing/finding dealers with no specific filter, use an empty string. Return ONLY the JSON.`,
-          },
-          { role: 'user', content: effectiveContent },
-        ]);
-        const secondResult = normalizeToolCall(extractJsonObject(secondPass));
-        if (secondResult.tool === 'searchDealer') {
-          toolCall = secondResult;
-        }
-      } catch {
-        // If second pass fails, keep original toolCall
-      }
     }
 
     if (toolCall.tool === 'getContractStatus') {
@@ -1323,7 +1966,7 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide a contract id.',
+          content: t('pleaseProvideContractId'),
           timestamp: new Date().toISOString(),
         };
       }
@@ -1347,19 +1990,34 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide a contract number to check cancellation eligibility.',
+          content: t('pleaseProvideContractCancel'),
           timestamp: new Date().toISOString(),
         };
       }
 
       const result = await checkCancellationEligibility(contractId);
 
+      // Track context only when eligible so a follow-up "yes" / "cancel"
+      // can open the cancellation page. Clear any stale context otherwise.
+      lastCancellationContext = result.isEligible ? result : null;
+
+      const baseContent = formatCancellationResult(result);
+      const content = result.isEligible
+        ? `${baseContent}\n\n${t('cancelPromptQuestion')}`
+        : baseContent;
+
       return {
         id: createId('local-assistant'),
         conversationId: 'local-ollama-demo',
         role: 'assistant',
-        content: formatCancellationResult(result),
+        content,
         timestamp: new Date().toISOString(),
+        suggestions: result.isEligible
+          ? [
+              { label: t('labelCancelContract'), action: 'cancel' },
+              { label: t('labelNotNow'), action: 'no' },
+            ]
+          : undefined,
       };
     }
 
@@ -1371,7 +2029,7 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide a program ID or program name to check the maximum markup.',
+          content: t('pleaseProvideProgramMarkup'),
           timestamp: new Date().toISOString(),
         };
       }
@@ -1397,7 +2055,7 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: `No dealers found matching "${query}".`,
+          content: `${t('noDealersFound')} "${query}".`,
           timestamp: new Date().toISOString(),
         };
       }
@@ -1409,7 +2067,7 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: `Found dealer **${details.dbaName}** (${details.dealerId}).`,
+          content: `${t('foundDealer')} **${details.dbaName}** (${details.dealerId}).`,
           timestamp: new Date().toISOString(),
           dealerDetails: details,
         };
@@ -1419,7 +2077,7 @@ export const api = {
         id: createId('local-assistant'),
         conversationId: 'local-ollama-demo',
         role: 'assistant',
-        content: `Found ${results.length} dealer(s) matching "${query}".`,
+        content: `${t('foundDealers')} ${results.length} ${t('dealersMatching')} "${query}".`,
         timestamp: new Date().toISOString(),
         dealerSearchResults: results,
       };
@@ -1432,29 +2090,45 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide a dealer code or dealer name to check eligibility.',
+          content: t('pleaseProvideDealerEligib'),
           timestamp: new Date().toISOString(),
         };
       }
 
       const eligibility = await checkEligibility(args);
-
-      // Save context for deactivation flow
-      if (eligibility.isEligible) {
-        lastEligibilityContext = { dealerCode: eligibility.dealerCode, product: eligibility.product };
-      }
+      console.log('[checkEligibility tool] args →', args, 'eligibility →', eligibility);
 
       // Use the API summary to determine if actions are appropriate
       const dealerNotFound = eligibility.summary.toLowerCase().includes('not found');
 
+      // Save context for activate / deactivate follow-ups. Capture the
+      // resolved programId (preferring the dealer's enrolled program from
+      // eligibility.programs[0], otherwise the program we just looked up)
+      // so the typed "activate" / "deactivate" flow posts the correct code
+      // — not the product code like "EW". Skip saving when the dealer
+      // wasn't found so stale context isn't carried forward.
+      if (eligibility.dealerCode && !dealerNotFound) {
+        lastEligibilityContext = {
+          dealerCode: eligibility.dealerCode,
+          product: eligibility.productId ?? eligibility.product,
+          programId: eligibility.programId
+            ?? eligibility.programs?.[0]?.code
+            ?? eligibility.resolvedProgramId,
+          programName: eligibility.programName
+            ?? eligibility.programs?.[0]?.name
+            ?? eligibility.resolvedProgramName,
+        };
+        console.log('[checkEligibility tool] saved lastEligibilityContext →', lastEligibilityContext);
+      }
+
       const suggestions: SuggestedAction[] = eligibility.isEligible
         ? [
-            { label: 'Deactivate', action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
+            { label: t('labelDeactivate'), action: 'deactivate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
           ]
         : (eligibility.dealerCode && !dealerNotFound)
           ? [
-              { label: 'Activate Product', action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
-              { label: 'View Dealer Details', action: 'viewDealer', payload: eligibility.dealerCode },
+              { label: t('labelActivateProduct'), action: 'activate', payload: `${eligibility.dealerCode}|${eligibility.product}` },
+              { label: t('labelViewDealerDetails'), action: 'viewDealer', payload: eligibility.dealerCode },
             ]
           : [];
 
@@ -1476,7 +2150,7 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide a dealer code to activate the program.',
+          content: t('pleaseProvideDealerActiv'),
           timestamp: new Date().toISOString(),
         };
       }
@@ -1485,12 +2159,12 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide a program ID (e.g., AU220, DW100) to activate.',
+          content: t('pleaseProvideProgramActiv'),
           timestamp: new Date().toISOString(),
         };
       }
 
-      const result = await activateProgram(args.dealerId, args.programId, args.effectiveDate);
+      const result = await activateProgram(args.dealerId, args.programId, args.effectiveDate, args.productId);
       return {
         id: createId('local-assistant'),
         conversationId: 'local-ollama-demo',
@@ -1509,7 +2183,7 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide a dealer code to deactivate the program.',
+          content: t('pleaseProvideDealerDeact'),
           timestamp: new Date().toISOString(),
         };
       }
@@ -1518,7 +2192,7 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: 'Please provide a program ID (e.g., AU220, DW100) to deactivate.',
+          content: t('pleaseProvideProgramDeact'),
           timestamp: new Date().toISOString(),
         };
       }
@@ -1529,23 +2203,23 @@ export const api = {
           id: createId('local-assistant'),
           conversationId: 'local-ollama-demo',
           role: 'assistant',
-          content: `You are about to deactivate program **${args.programId}** for dealer **${args.dealerId}**.\n\nWould you like the expiry to be effective today or on a future date?`,
+          content: `${t('aboutToDeactivateProg')} **${args.programId}** ${t('forDealer')} **${args.dealerId}**.\n\n${t('expiryTodayOrFuture')}`,
           timestamp: new Date().toISOString(),
           suggestions: [
-            { label: 'Today', action: 'today' },
-            { label: 'Future Date', action: 'future date' },
+            { label: t('labelToday'), action: 'today' },
+            { label: t('labelFutureDate'), action: 'future date' },
           ],
         };
       }
 
-      const result = await deactivateProgram(args.dealerId, args.programId, args.expiryDate);
+      const result = await deactivateProgram(args.dealerId, args.programId, args.expiryDate, args.productId);
       return {
         id: createId('local-assistant'),
         conversationId: 'local-ollama-demo',
         role: 'assistant',
         content: result.success
-          ? `✅ **Deactivation Successful**\n\n**Dealer:** ${result.dealerCode} (${result.dealerName})\n**Program:** ${result.programId} (${result.programName})\n**Expiry Date:** ${result.effectiveDate}\n\n${result.summary}`
-          : `❌ **Deactivation Failed**\n\n${result.summary}`,
+          ? `${t('deactivationSuccess')}\n\n${t('fieldDealer')} ${result.dealerCode} (${result.dealerName})\n${t('fieldProgram')} ${result.programId} (${result.programName})\n${t('fieldExpiryDate')} ${result.effectiveDate}\n\n${result.summary}`
+          : `${t('deactivationFailed')}\n\n${result.summary}`,
         timestamp: new Date().toISOString(),
       };
     }
@@ -1555,7 +2229,7 @@ export const api = {
         id: createId('local-assistant'),
         conversationId: 'local-ollama-demo',
         role: 'assistant',
-        content: toolCall.answer || 'Please provide more details.',
+        content: toolCall.answer || t('pleaseProvideMoreDetails'),
         timestamp: new Date().toISOString(),
       };
     }
@@ -1651,11 +2325,17 @@ export const api = {
     fetchApi<void>(`/api/SupportTickets/${id}?requesterEmail=${encodeURIComponent(requesterEmail)}`, {
       method: 'DELETE',
     }),
-  addSupportTicketComment: (id: string, text: string, authorName: string, email: string) =>
-    fetchApi<SupportTicket>(`/api/SupportTickets/${id}/comments`, {
+  addSupportTicketComment: (id: string, text: string, authorName: string, email: string) => {
+    // Backend expects [FromForm] AddCommentForm (multipart), not JSON.
+    const formData = new FormData();
+    formData.append('text', text);
+    formData.append('authorName', authorName);
+    formData.append('email', email);
+    return fetchApi<SupportTicket>(`/api/SupportTickets/${id}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ text, authorName, email }),
-    }),
+      body: formData,
+    });
+  },
   deleteSupportTicketComment: (ticketId: string, commentId: string) =>
     fetchApi<void>(`/api/SupportTickets/${ticketId}/comments/${commentId}`, {
       method: 'DELETE',

@@ -8,14 +8,34 @@
   overflow: hidden;
   background-color: var(--bg-primary);
   border-left: 1px solid var(--border);
-  transition: width 0.3s ease, min-width 0.3s ease;
+  position: relative;
 }
 
 .chat-area.collapsed {
-  width: 48px;
-  min-width: 48px;
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
   align-items: center;
   padding-top: 12px;
+}
+
+/* Drag handle on the left edge for resizing */
+.chat-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 10;
+  transition: background-color 0.15s ease;
+}
+
+.chat-resize-handle:hover,
+.chat-resize-handle:active {
+  background-color: var(--accent);
+  opacity: 0.4;
 }
 
 .chat-expand-btn {
@@ -52,6 +72,35 @@
 .chat-collapse-btn:hover {
   background-color: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+.chat-new-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.chat-new-btn:hover:not(:disabled) {
+  background-color: var(--bg-tertiary);
+  color: var(--accent);
+}
+
+.chat-new-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Chat Header */
@@ -261,8 +310,8 @@
 }
 
 .message.user .message-bubble {
-  background-color: var(--text-primary);
-  color: white;
+  background-color: var(--user-bubble);
+  color: var(--text-primary);
   border-bottom-right-radius: 4px;
 }
 
